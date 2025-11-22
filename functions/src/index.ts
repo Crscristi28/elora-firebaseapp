@@ -88,7 +88,8 @@ export const streamChat = onRequest(
         { role: "user", parts },
       ];
 
-      const systemInstruction = settings?.systemInstruction || undefined;
+      // Handle System Instructions explicitly
+      const systemInstruction = settings?.systemInstruction ? String(settings.systemInstruction) : undefined;
 
       // Check if this is image generation model
       const isImageGen = modelId === "gemini-2.5-flash-image";
@@ -130,25 +131,78 @@ export const streamChat = onRequest(
         res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
         res.end();
       } else {
-        // Regular chat streaming
+        // Regular chat streaming with Google Search & System Instructions
         const result = await ai.models.generateContentStream({
           model: modelId || "gemini-2.5-flash",
           contents,
           config: {
-            temperature: settings?.temperature || 1.0,
-            topP: settings?.topP || 0.95,
-            systemInstruction,
+            tools: [{ googleSearch: {} }], // Enable Google Search
+            temperature: settings?.temperature ?? 1.0,
+            topP: settings?.topP ?? 0.95,
+            systemInstruction: systemInstruction, 
           },
         });
+
+        let sentMetadata = false;
 
         for await (const chunk of result) {
           const text = chunk.text;
           if (text) {
             res.write(`data: ${JSON.stringify({ text })}\n\n`);
-            // Force flush to underlying socket
-            if ((res as any).flush) (res as any).flush();
-            if ((res.socket as any)?.uncork) (res.socket as any).uncork();
           }
+
+          // Extract Grounding Metadata (Sources) from chunks
+          const candidate = (chunk as any).candidates?.[0];
+          if (candidate?.groundingMetadata && !sentMetadata) {
+            const metadata = candidate.groundingMetadata;
+            
+            if (metadata.groundingChunks) {
+               const sources = metadata.groundingChunks
+                 .map((c: any) => {
+                    if (c.web) {
+                        return { title: c.web.title, url: c.web.uri };
+                    }
+                    return null;
+                 })
+                 .filter((s: any) => s !== null);
+
+               if (sources.length > 0) {
+                 res.write(`data: ${JSON.stringify({ sources })}\n\n`);
+                 sentMetadata = true; 
+               }
+            }
+          }
+
+          // Force flush
+          if ((res as any).flush) (res as any).flush();
+          if ((res.socket as any)?.uncork) (res.socket as any).uncork();
+        }
+
+        // Double check final response if we haven't found metadata yet
+        // The metadata might be in the aggregated response but not in individual chunks
+        if (!sentMetadata) {
+            try {
+                const finalResponse = await result.response;
+                const finalMetadata = finalResponse.candidates?.[0]?.groundingMetadata;
+                
+                if (finalMetadata?.groundingChunks) {
+                    const sources = finalMetadata.groundingChunks
+                        .map((c: any) => {
+                            if (c.web) {
+                                return { title: c.web.title, url: c.web.uri };
+                            }
+                            return null;
+                        })
+                        .filter((s: any) => s !== null);
+
+                    if (sources.length > 0) {
+                        res.write(`data: ${JSON.stringify({ sources })}\n\n`);
+                    }
+                }
+            } catch (e) {
+                // Ignore error accessing final response
+                console.log("Error accessing final response metadata", e);
+            }
         }
 
         res.write(`data: ${JSON.stringify({ done: true })}\n\n`);

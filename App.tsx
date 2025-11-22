@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { ChatMessage, Role, Attachment, ModelId, MODELS, ChatSession, PromptSettings, AppSettings, UserProfile } from './types';
+import { ChatMessage, Role, Attachment, ModelId, MODELS, ChatSession, PromptSettings, AppSettings, UserProfile, Source } from './types';
 import MessageList from './components/MessageList';
 import InputArea from './components/InputArea';
 import Sidebar from './components/Sidebar';
@@ -174,6 +174,7 @@ const App: React.FC = () => {
 
     try {
       let fullResponse = "";
+      let foundSources: Source[] = []; // Track sources
 
       // Clear any existing debounce timer before starting a new stream
       if (debounceTimerRef.current) {
@@ -190,6 +191,7 @@ const App: React.FC = () => {
             id: newBotMessageId,
             role: Role.MODEL,
             text: fullResponse,
+            sources: foundSources, // Include sources
             isStreaming: true,
             timestamp: Date.now(),
           });
@@ -201,8 +203,17 @@ const App: React.FC = () => {
 
           debounceTimerRef.current = setTimeout(() => {
             console.log("Debounced write to Firestore...");
+            // Write text only for now to keep it light
             updateMessageInDb(sessionId, newBotMessageId, { text: fullResponse });
           }, 1500); // Write to DB every 1.5 seconds of inactivity
+        },
+        (sources) => {
+            foundSources = sources;
+            // Immediate update for sources
+            setStreamingMessage(prev => {
+                if (!prev) return null;
+                return { ...prev, sources: foundSources };
+            });
         }
       );
 
@@ -215,8 +226,12 @@ const App: React.FC = () => {
       // Clear streaming state (now rely on Firestore)
       setStreamingMessage(null);
 
-      // Perform one final, guaranteed write with the complete response
-      await updateMessageInDb(sessionId, newBotMessageId, { text: fullResponse, isStreaming: false });
+      // Perform one final, guaranteed write with the complete response AND sources
+      await updateMessageInDb(sessionId, newBotMessageId, { 
+          text: fullResponse, 
+          isStreaming: false,
+          sources: foundSources
+      });
 
       // Turn off loading indicator BEFORE generating suggestions (prevents thinking dots)
       setIsLoading(false);

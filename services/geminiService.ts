@@ -1,4 +1,4 @@
-import { Attachment, ChatMessage, ModelId, PromptSettings, TONE_PROMPTS } from "../types";
+import { Attachment, ChatMessage, ModelId, PromptSettings, TONE_PROMPTS, Source } from "../types";
 
 // Cloud Function URLs
 const BASE_URL = 'https://us-central1-elenor-57bde.cloudfunctions.net';
@@ -45,7 +45,8 @@ export const streamChatResponse = async (
   attachments: Attachment[],
   modelId: ModelId,
   settings: PromptSettings,
-  onChunk: (text: string) => void
+  onChunk: (text: string) => void,
+  onSources?: (sources: Source[]) => void
 ): Promise<string> => {
   // --- AGENT ROUTING START ---
   // If the user is NOT already in Image Gen mode, let's check if they WANT to be.
@@ -115,19 +116,27 @@ export const streamChatResponse = async (
       const lines = chunk.split('\n');
       for (const line of lines) {
         if (line.startsWith('data: ')) {
-          const data = JSON.parse(line.slice(6));
+          try {
+            const data = JSON.parse(line.slice(6));
 
-          if (data.error) {
-            throw new Error(data.error);
-          }
+            if (data.error) {
+              throw new Error(data.error);
+            }
 
-          if (data.text) {
-            fullText += data.text;
-            onChunk(data.text);
-          }
+            if (data.text) {
+              fullText += data.text;
+              onChunk(data.text);
+            }
 
-          if (data.done) {
-            return fullText;
+            if (data.sources && onSources) {
+              onSources(data.sources);
+            }
+
+            if (data.done) {
+              return fullText;
+            }
+          } catch (e) {
+            // Ignore parse errors for partial chunks
           }
         }
       }

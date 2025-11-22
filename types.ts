@@ -18,6 +18,11 @@ export interface Attachment {
   name?: string;
 }
 
+export interface Source {
+  title: string;
+  url: string;
+}
+
 export interface ChatMessage {
   id: string;
   role: Role;
@@ -27,6 +32,7 @@ export interface ChatMessage {
   timestamp: number;
   error?: boolean;
   suggestions?: string[]; // New field for follow-up questions
+  sources?: Source[]; // New field for citations/sources
 }
 
 export interface ChatSession {
