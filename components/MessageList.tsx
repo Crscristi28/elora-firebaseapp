@@ -62,6 +62,9 @@ const MessageItem = ({
   onSaveTTSSettings,
   onSuggestionClick
 }: any) => {
+  
+  // Local state for Thinking Process toggle
+  const [isThinkingExpanded, setIsThinkingExpanded] = useState(false);
 
   // Don't render content if it's a placeholder waiting for text.
   if (msg.role === Role.MODEL && msg.isStreaming && (!msg.text || msg.text.length === 0)) {
@@ -163,14 +166,31 @@ const MessageItem = ({
             {/* Name & Model Badge */}
             <div className="flex items-center gap-2">
                 <span className="text-sm font-bold text-gray-900 dark:text-gray-100">Elora</span>
-                {/* Thinking Indicator (Placeholder for future expansion) */}
-                {msg.isStreaming && !msg.text ? (
+                {/* Streaming Indicator */}
+                {msg.isStreaming && !msg.text && (
                      <span className="text-xs text-gray-400 animate-pulse">Thinking...</span>
-                ) : (
-                     <span className="text-[10px] text-gray-400 border border-gray-200 dark:border-gray-700 rounded px-1.5 py-0.5 opacity-0 group-hover:opacity-100 transition-opacity">AI</span>
+                )}
+                
+                {/* THINKING PROCESS TOGGLE */}
+                {msg.thinking && (
+                    <button 
+                        onClick={() => setIsThinkingExpanded(!isThinkingExpanded)}
+                        className="flex items-center gap-1.5 ml-2 px-2 py-1 rounded-full bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/20 transition-colors text-[10px] font-medium text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-transparent"
+                    >
+                        <Sparkles size={10} className="text-purple-500" />
+                        <span>Thinking Process</span>
+                        <ChevronDown size={10} className={`transition-transform duration-200 ${isThinkingExpanded ? 'rotate-180' : ''}`} />
+                    </button>
                 )}
             </div>
         </div>
+
+        {/* THINKING CONTENT BLOCK (Expandable) */}
+        {msg.thinking && isThinkingExpanded && (
+            <div className="ml-0 md:ml-9 mb-4 p-4 bg-gray-50 dark:bg-[#1a1b1e] rounded-xl text-xs leading-relaxed text-gray-600 dark:text-gray-400 border-l-2 border-purple-500/50 animate-slide-down font-mono whitespace-pre-wrap shadow-inner">
+                {msg.thinking}
+            </div>
+        )}
 
         {/* BODY: Clean Text (No Bubble) */}
         <div className="pl-0 md:pl-9 w-full">
