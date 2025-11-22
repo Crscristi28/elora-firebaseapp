@@ -88,11 +88,14 @@ export const streamChat = onRequest(
         { role: "user", parts },
       ];
 
-      // Handle System Instructions explicitly
       const systemInstruction = settings?.systemInstruction ? String(settings.systemInstruction) : undefined;
 
-      // Check if this is image generation model
+      // Model Type Checks
       const isImageGen = modelId === "gemini-2.5-flash-image";
+      const isLite = modelId === "gemini-2.5-flash-lite";
+      
+      // Thinking Config: Enable for Flash/Pro, Disable for Lite/Image
+      const isThinkingCapable = !isLite && !isImageGen;
 
       if (isImageGen) {
         // Image generation (non-streaming)
@@ -131,12 +134,23 @@ export const streamChat = onRequest(
         res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
         res.end();
       } else {
-        // Regular chat streaming with Google Search & System Instructions
+        // Regular chat streaming with Google Search & Thinking
+        
+        // Configure Thinking if capable
+        // Use camelCase to match SDK types
+        const thinkingConfig = isThinkingCapable ? {
+            includeThoughts: true
+        } : undefined;
+
+        // Configure Search
+        const tools: any[] = [{ googleSearch: {} }];
+
         const result = await ai.models.generateContentStream({
           model: modelId || "gemini-2.5-flash",
           contents,
           config: {
-            tools: [{ googleSearch: {} }], // Enable Google Search
+            tools,
+            thinkingConfig, 
             temperature: settings?.temperature ?? 1.0,
             topP: settings?.topP ?? 0.95,
             systemInstruction: systemInstruction, 
@@ -146,21 +160,42 @@ export const streamChat = onRequest(
         let sentMetadata = false;
 
         for await (const chunk of result) {
-          const text = chunk.text;
-          if (text) {
-            res.write(`data: ${JSON.stringify({ text })}\n\n`);
+          // Handle Thinking & Text parts
+          const candidates = (chunk as any).candidates;
+          if (candidates && candidates.length > 0) {
+             const parts = candidates[0].content?.parts;
+             if (parts) {
+                 for (const part of parts) {
+                     // Check if this part is a thought
+                     const isThought = (part as any).thought === true;
+                     
+                     if (isThought && part.text) {
+                         res.write(`data: ${JSON.stringify({ thinking: part.text })}\n\n`);
+                     } else if (part.text) {
+                         res.write(`data: ${JSON.stringify({ text: part.text })}\n\n`);
+                     }
+                 }
+             }
+          } else {
+              // Fallback for simple text chunks
+              const text = chunk.text;
+              if (text) {
+                res.write(`data: ${JSON.stringify({ text })}\n\n`);
+              }
           }
 
-          // Extract Grounding Metadata (Sources) from chunks
-          const candidate = (chunk as any).candidates?.[0];
-          if (candidate?.groundingMetadata && !sentMetadata) {
-            const metadata = candidate.groundingMetadata;
-            
+          // Extract Grounding Metadata (Sources)
+          let metadata = (chunk as any).groundingMetadata;
+          if (!metadata) {
+             metadata = (chunk as any).candidates?.[0]?.groundingMetadata;
+          }
+
+          if (metadata && !sentMetadata) {
             if (metadata.groundingChunks) {
                const sources = metadata.groundingChunks
                  .map((c: any) => {
                     if (c.web) {
-                        return { title: c.web.title, url: c.web.uri };
+                        return { title: c.web.title || "Web Source", url: c.web.uri };
                     }
                     return null;
                  })
@@ -176,33 +211,6 @@ export const streamChat = onRequest(
           // Force flush
           if ((res as any).flush) (res as any).flush();
           if ((res.socket as any)?.uncork) (res.socket as any).uncork();
-        }
-
-        // Double check final response if we haven't found metadata yet
-        // The metadata might be in the aggregated response but not in individual chunks
-        if (!sentMetadata) {
-            try {
-                const finalResponse = await result.response;
-                const finalMetadata = finalResponse.candidates?.[0]?.groundingMetadata;
-                
-                if (finalMetadata?.groundingChunks) {
-                    const sources = finalMetadata.groundingChunks
-                        .map((c: any) => {
-                            if (c.web) {
-                                return { title: c.web.title, url: c.web.uri };
-                            }
-                            return null;
-                        })
-                        .filter((s: any) => s !== null);
-
-                    if (sources.length > 0) {
-                        res.write(`data: ${JSON.stringify({ sources })}\n\n`);
-                    }
-                }
-            } catch (e) {
-                // Ignore error accessing final response
-                console.log("Error accessing final response metadata", e);
-            }
         }
 
         res.write(`data: ${JSON.stringify({ done: true })}\n\n`);

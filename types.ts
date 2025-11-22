@@ -33,6 +33,7 @@ export interface ChatMessage {
   error?: boolean;
   suggestions?: string[]; // New field for follow-up questions
   sources?: Source[]; // New field for citations/sources
+  thinking?: string; // The internal monologue/reasoning process
 }
 
 export interface ChatSession {

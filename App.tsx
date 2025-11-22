@@ -175,6 +175,7 @@ const App: React.FC = () => {
     try {
       let fullResponse = "";
       let foundSources: Source[] = []; // Track sources
+      let fullThinking = ""; // Track thinking process
 
       // Clear any existing debounce timer before starting a new stream
       if (debounceTimerRef.current) {
@@ -192,6 +193,7 @@ const App: React.FC = () => {
             role: Role.MODEL,
             text: fullResponse,
             sources: foundSources, // Include sources
+            thinking: fullThinking, // Include thinking
             isStreaming: true,
             timestamp: Date.now(),
           });
@@ -214,6 +216,14 @@ const App: React.FC = () => {
                 if (!prev) return null;
                 return { ...prev, sources: foundSources };
             });
+        },
+        (thoughtChunk) => {
+            fullThinking += thoughtChunk;
+            // Immediate update for thinking
+            setStreamingMessage(prev => {
+                if (!prev) return null;
+                return { ...prev, thinking: fullThinking };
+            });
         }
       );
 
@@ -226,11 +236,12 @@ const App: React.FC = () => {
       // Clear streaming state (now rely on Firestore)
       setStreamingMessage(null);
 
-      // Perform one final, guaranteed write with the complete response AND sources
+      // Perform one final, guaranteed write with the complete response AND sources AND thinking
       await updateMessageInDb(sessionId, newBotMessageId, { 
           text: fullResponse, 
           isStreaming: false,
-          sources: foundSources
+          sources: foundSources,
+          thinking: fullThinking
       });
 
       // Turn off loading indicator BEFORE generating suggestions (prevents thinking dots)

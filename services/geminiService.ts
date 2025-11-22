@@ -46,7 +46,8 @@ export const streamChatResponse = async (
   modelId: ModelId,
   settings: PromptSettings,
   onChunk: (text: string) => void,
-  onSources?: (sources: Source[]) => void
+  onSources?: (sources: Source[]) => void,
+  onThinking?: (text: string) => void
 ): Promise<string> => {
   // --- AGENT ROUTING START ---
   // If the user is NOT already in Image Gen mode, let's check if they WANT to be.
@@ -121,6 +122,10 @@ export const streamChatResponse = async (
 
             if (data.error) {
               throw new Error(data.error);
+            }
+
+            if (data.thinking && onThinking) {
+                onThinking(data.thinking);
             }
 
             if (data.text) {
