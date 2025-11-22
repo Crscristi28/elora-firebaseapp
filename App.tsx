@@ -310,7 +310,7 @@ const App: React.FC = () => {
         user={user}
         onSignOut={() => signOut(auth)}
       />
-      <div className="flex-1 flex flex-col relative min-w-0 bg-white dark:bg-[#0e0e10]">
+      <div className="flex-1 flex flex-col h-full relative min-w-0 bg-white dark:bg-[#0e0e10]">
           {/* FLOATING ISLAND HEADER */}
           <div className="fixed top-0 left-0 right-0 z-50 flex items-start justify-between px-4 pointer-events-none pt-safe">
               <div className="mt-3 pointer-events-auto">
