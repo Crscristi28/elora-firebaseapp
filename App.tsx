@@ -338,7 +338,7 @@ const App: React.FC = () => {
       />
       <div className="flex-1 flex flex-col h-full relative min-w-0 bg-white dark:bg-[#0e0e10]">
           {/* FLOATING ISLAND HEADER */}
-          <div className="fixed top-0 left-0 right-0 z-50 flex items-start justify-between px-4 pointer-events-none pt-safe">
+          <div className="fixed top-0 left-0 right-0 z-40 flex items-start justify-between px-4 pointer-events-none pt-safe">
               <div className="mt-3 pointer-events-auto">
                   <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2.5 rounded-full bg-white/10 backdrop-blur-md shadow-sm border border-white/20 text-gray-700 dark:text-gray-200 hover:bg-white/20 transition-all active:scale-95"><Menu size={20} /></button>
               </div>
