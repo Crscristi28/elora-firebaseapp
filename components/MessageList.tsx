@@ -14,6 +14,7 @@ interface MessageListProps {
   onEdit?: (id: string, newText: string) => void;
   onReply?: (msg: ChatMessage) => void;
   onSuggestionClick?: (text: string) => void;
+  minFooterHeight: number;
 }
 
 // --- Helper Functions ---
@@ -329,12 +330,17 @@ const MessageItem = ({
 };
 
 // --- Main MessageList Component ---
-const MessageList: React.FC<MessageListProps> = ({ messages, isThinking, onEdit, onReply, onSuggestionClick }) => {
+const MessageList: React.FC<MessageListProps> = ({ messages, isThinking, onEdit, onReply, onSuggestionClick, minFooterHeight }) => {
     const virtuosoRef = useRef<VirtuosoHandle>(null);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editText, setEditText] = useState('');
     const [speakingId, setSpeakingId] = useState<string | null>(null);
     const [copiedId, setCopiedId] = useState<string | null>(null);
+
+    // Dynamic footer states
+    const [footerHeight, setFooterHeight] = useState<string>(`${minFooterHeight}px`);
+    const [isFooterBig, setIsFooterBig] = useState<boolean>(false);
+    const justSentMessageRef = useRef<boolean>(false); // Prevent immediate shrink after setting big
 
     // TTS Settings State
     const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
@@ -363,15 +369,32 @@ const MessageList: React.FC<MessageListProps> = ({ messages, isThinking, onEdit,
         }
     }, []);
 
+    // Update footer height when minFooterHeight changes (only if footer is not big)
+    useEffect(() => {
+        if (!isFooterBig) {
+            setFooterHeight(`${minFooterHeight}px`);
+        }
+    }, [minFooterHeight, isFooterBig]);
+
     // Auto-scroll logic - Focus Mode: user messages go to TOP
     useEffect(() => {
         if (messages.length > 0) {
             const lastMessage = messages[messages.length - 1];
             // Only scroll when user sends a message - position it at TOP
             if (lastMessage.role === Role.USER) {
+                // Set footer to 55vh for Focus Mode
+                setFooterHeight('55vh');
+                setIsFooterBig(true);
+                justSentMessageRef.current = true;
+
                 setTimeout(() => {
                     virtuosoRef.current?.scrollToIndex({ index: messages.length - 1, align: 'start', behavior: 'smooth' });
                 }, 100);
+
+                // Allow scrolling to shrink footer after 500ms (after scroll animation completes)
+                setTimeout(() => {
+                    justSentMessageRef.current = false;
+                }, 500);
             }
         }
     }, [messages.length]);
@@ -462,6 +485,15 @@ const MessageList: React.FC<MessageListProps> = ({ messages, isThinking, onEdit,
             alert('Copied to clipboard!');
         }
     };
+
+    // Handle scrolling state change - shrink footer when user scrolls
+    const handleScrollingStateChange = (isScrolling: boolean) => {
+        // Only shrink if user is scrolling, footer is big, AND we're not in the immediate post-send period
+        if (isScrolling && isFooterBig && !justSentMessageRef.current) {
+            setFooterHeight(`${minFooterHeight}px`);
+            setIsFooterBig(false);
+        }
+    };
     
     // Determine when to show the "Thinking" indicator.
     // Show ONLY before bot responds - never show after streaming or during suggestions
@@ -494,6 +526,7 @@ const MessageList: React.FC<MessageListProps> = ({ messages, isThinking, onEdit,
             className="flex-1 w-full scrollbar-hide" // Use flex-1 to fill remaining space correctly
             atBottomThreshold={60}
             followOutput={false}
+            isScrolling={handleScrollingStateChange}
             itemContent={(index, msg) => (
                 <MessageItem
                     key={msg.id}
@@ -521,9 +554,9 @@ const MessageList: React.FC<MessageListProps> = ({ messages, isThinking, onEdit,
                 />
             )}
             components={{
-                Header: () => <div className="h-32" />,
+                Header: () => <div className="h-30" />,
                 Footer: () => (
-                  <div style={{ height: '55vh' }}>
+                  <div style={{ height: footerHeight }}>
                     {/* Thinking Indicator */}
                     {showThinkingDots && (
                        <div className="max-w-4xl mx-auto w-full px-5 py-6">

@@ -35,6 +35,9 @@ const App: React.FC = () => {
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   const [suggestionText, setSuggestionText] = useState<string>('');
   const [streamingMessage, setStreamingMessage] = useState<ChatMessage | null>(null);
+  const [minFooterHeight, setMinFooterHeight] = useState<number>(100); // Default 100px
+
+  const inputAreaRef = useRef<HTMLDivElement>(null);
 
   // --- SETTINGS (Stays Local) ---
   const [appSettings, setAppSettings] = useState<AppSettings>(() => {
@@ -73,6 +76,28 @@ const App: React.FC = () => {
       setCurrentSessionId(sessions[0].id);
     }
   }, [sessions, currentSessionId, setCurrentSessionId]);
+
+  // Measure input area height for dynamic footer
+  useEffect(() => {
+    const measureInputHeight = () => {
+      if (inputAreaRef.current) {
+        const height = inputAreaRef.current.offsetHeight;
+        setMinFooterHeight(height + 20); // Add 20px padding
+      }
+    };
+
+    // Measure on mount and when window resizes
+    measureInputHeight();
+    window.addEventListener('resize', measureInputHeight);
+
+    // Also measure after a short delay to ensure layout is stable
+    const timer = setTimeout(measureInputHeight, 100);
+
+    return () => {
+      window.removeEventListener('resize', measureInputHeight);
+      clearTimeout(timer);
+    };
+  }, []);
 
   // --- HANDLERS (Now talk to Firestore) ---
 
@@ -386,8 +411,11 @@ const App: React.FC = () => {
               onEdit={handleEditMessage}
               onReply={handleReply}
               onSuggestionClick={handleSuggestionClick}
+              minFooterHeight={minFooterHeight}
             />
-            <InputArea onSend={handleSendMessage} isLoading={isLoading} selectedModel={selectedModel} replyingTo={replyingTo} onClearReply={handleClearReply} initialText={suggestionText} onClearInitialText={handleClearSuggestion} />
+            <div ref={inputAreaRef}>
+              <InputArea onSend={handleSendMessage} isLoading={isLoading} selectedModel={selectedModel} replyingTo={replyingTo} onClearReply={handleClearReply} initialText={suggestionText} onClearInitialText={handleClearSuggestion} />
+            </div>
           </div>
       </div>
     </div>
