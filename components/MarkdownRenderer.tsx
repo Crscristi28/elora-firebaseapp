@@ -99,7 +99,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
             <ol {...props} className="list-decimal list-outside ml-4 mb-4 text-gray-700 dark:text-gray-300" />
          ),
          p: ({ node, ...props }) => (
-            <p {...props} className="mb-4 leading-relaxed text-gray-800 dark:text-gray-100 last:mb-0" />
+            <div {...props} className="mb-4 leading-relaxed text-gray-800 dark:text-gray-100 last:mb-0" />
          ),
          h1: ({ node, ...props }) => (
             <h1 {...props} className="text-2xl font-bold mb-4 text-gray-900 dark:text-white mt-6 first:mt-0" />
