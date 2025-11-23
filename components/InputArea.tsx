@@ -379,7 +379,7 @@ const InputArea: React.FC<InputAreaProps> = ({ onSend, isLoading, selectedModel,
 
       {/* Attachment Previews */}
       {attachments.length > 0 && (
-        <div className="flex gap-3 overflow-x-auto px-4 mb-3 scrollbar-hide max-w-3xl mx-auto w-full">
+        <div className="flex gap-3 overflow-x-auto px-4 mb-3 py-2 scrollbar-hide max-w-3xl mx-auto w-full">
           {attachments.map((att, i) => (
             <div key={i} className="relative group flex-shrink-0">
               {att.mimeType.startsWith('image/') ? (
@@ -405,7 +405,7 @@ const InputArea: React.FC<InputAreaProps> = ({ onSend, isLoading, selectedModel,
         </div>
       )}
 
-      <div className="max-w-3xl mx-auto w-full flex items-end gap-2">
+      <div className="max-w-3xl mx-auto w-full flex items-end gap-2 justify-center">
         
         {/* Plus / File Button */}
         <button
@@ -438,7 +438,7 @@ const InputArea: React.FC<InputAreaProps> = ({ onSend, isLoading, selectedModel,
         </button>
 
         {/* Input Pill */}
-        <div className="flex-1 bg-gray-100 dark:bg-[#2d2e33] rounded-[24px] min-h-[50px] flex items-center px-4 py-2 transition-all border border-transparent focus-within:border-gray-300 dark:focus-within:border-gray-600">
+        <div className="flex-1 max-w-[60%] bg-gray-100 dark:bg-[#2d2e33] rounded-[24px] min-h-[50px] flex items-center px-4 py-2 transition-all border border-transparent focus-within:border-gray-300 dark:focus-within:border-gray-600">
           <textarea
             ref={textareaRef}
             value={input}

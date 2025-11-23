@@ -47,8 +47,8 @@ export const streamChat = onRequest(
     try {
       const { history, newMessage, attachments, modelId, settings } = req.body;
 
-      if (!newMessage) {
-        res.status(400).json({ error: "newMessage is required" });
+      if (!newMessage && (!attachments || attachments.length === 0)) {
+        res.status(400).json({ error: "Either message text or attachments are required" });
         return;
       }
 
@@ -75,7 +75,7 @@ export const streamChat = onRequest(
         });
       }
 
-      if (newMessage) {
+      if (newMessage && newMessage.trim()) {
         parts.push({ text: newMessage });
       }
 
