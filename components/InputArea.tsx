@@ -1,7 +1,63 @@
 import React, { useState, useRef, KeyboardEvent, ChangeEvent, useEffect } from 'react';
-import { ArrowUp, Plus, X, Mic, Square, FileText, SlidersHorizontal, Check, ChevronDown, ChevronUp, Image as ImageIcon, Ratio, Upload, Reply } from 'lucide-react';
+import { ArrowUp, Plus, X, Mic, Square, FileText, SlidersHorizontal, Check, ChevronDown, ChevronUp, Image as ImageIcon, Ratio, Upload, Reply, Loader2 } from 'lucide-react';
 import { Attachment, PromptSettings, ToneStyle, ModelId, AspectRatio, ChatMessage } from '../types';
 import { fileToBase64 } from '../services/geminiService';
+import { useAuth } from '../hooks/useAuth';
+import { storage } from '../firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+
+// MIME type to file extension mapping
+const MIME_TO_EXT: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/gif': 'gif',
+  'image/webp': 'webp',
+  'image/svg+xml': 'svg',
+  'application/pdf': 'pdf',
+  'text/plain': 'txt',
+  'text/csv': 'csv'
+};
+
+/**
+ * Uploads attachment to Firebase Storage
+ * Returns the download URL
+ */
+const uploadAttachmentToStorage = async (
+  base64Data: string,
+  mimeType: string,
+  userId: string
+): Promise<string> => {
+  try {
+    // Validate size (20MB limit)
+    if (base64Data.length > 28 * 1024 * 1024) {
+      throw new Error("File too large (max 20MB)");
+    }
+
+    // Decode base64
+    const byteCharacters = atob(base64Data);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    const blob = new Blob([byteArray], { type: mimeType });
+
+    // Get file extension
+    const ext = MIME_TO_EXT[mimeType] || 'bin';
+    const timestamp = Date.now();
+    const fileName = `${timestamp}.${ext}`;
+
+    // Upload to Storage
+    const storageRef = ref(storage, `users/${userId}/uploads/${fileName}`);
+    await uploadBytes(storageRef, blob);
+
+    // Get download URL
+    return await getDownloadURL(storageRef);
+  } catch (e: any) {
+    console.error("Upload failed:", e);
+    throw new Error(`Upload failed: ${e.message}`);
+  }
+};
 
 interface InputAreaProps {
   onSend: (text: string, attachments: Attachment[], settings: PromptSettings) => void;
@@ -14,8 +70,10 @@ interface InputAreaProps {
 }
 
 const InputArea: React.FC<InputAreaProps> = ({ onSend, isLoading, selectedModel, replyingTo, onClearReply, initialText, onClearInitialText }) => {
+  const { user } = useAuth();
   const [input, setInput] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [uploadingIndexes, setUploadingIndexes] = useState<Set<number>>(new Set());
   const [isListening, setIsListening] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -146,12 +204,18 @@ const InputArea: React.FC<InputAreaProps> = ({ onSend, isLoading, selectedModel,
   };
 
   const handleFileSelect = async (e: ChangeEvent<HTMLInputElement>) => {
+    if (!user?.uid) {
+      alert("Please sign in to upload files");
+      return;
+    }
+
     if (e.target.files && e.target.files.length > 0) {
+      const filesToProcess = Array.from(e.target.files);
+      const startIndex = attachments.length;
+
+      // 1. Convert ALL files to base64 first
       const newAttachments: Attachment[] = [];
-      
-      for (let i = 0; i < e.target.files.length; i++) {
-        const file = e.target.files[i];
-        
+      for (const file of filesToProcess) {
         try {
           const base64 = await fileToBase64(file);
           newAttachments.push({
@@ -164,7 +228,47 @@ const InputArea: React.FC<InputAreaProps> = ({ onSend, isLoading, selectedModel,
         }
       }
 
+      // 2. Add ALL attachments at once
       setAttachments(prev => [...prev, ...newAttachments]);
+
+      // 3. Mark ALL as uploading
+      const uploadingSet = new Set<number>();
+      for (let i = 0; i < newAttachments.length; i++) {
+        uploadingSet.add(startIndex + i);
+      }
+      setUploadingIndexes(prev => new Set([...prev, ...uploadingSet]));
+
+      // 4. Upload ALL in parallel
+      newAttachments.forEach(async (att, i) => {
+        const attachmentIndex = startIndex + i;
+        try {
+          console.log('Uploading', att.name, 'to Storage...');
+          const storageUrl = await uploadAttachmentToStorage(att.data!, att.mimeType, user.uid);
+          console.log('Uploaded:', att.name, '→', storageUrl);
+
+          // 5. Add storageUrl (keep data for Gemini)
+          setAttachments(prev => prev.map((a, idx) =>
+            idx === attachmentIndex
+              ? { ...a, storageUrl }
+              : a
+          ));
+
+          // 6. Remove from uploading
+          setUploadingIndexes(prev => {
+            const updated = new Set(prev);
+            updated.delete(attachmentIndex);
+            return updated;
+          });
+        } catch (err: any) {
+          console.error("Failed to upload", att.name, err);
+          setUploadingIndexes(prev => {
+            const updated = new Set(prev);
+            updated.delete(attachmentIndex);
+            return updated;
+          });
+        }
+      });
+
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
@@ -207,12 +311,18 @@ const InputArea: React.FC<InputAreaProps> = ({ onSend, isLoading, selectedModel,
     e.preventDefault();
     setIsDragging(false);
 
+    if (!user?.uid) {
+      alert("Please sign in to upload files");
+      return;
+    }
+
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const filesToProcess = Array.from(e.dataTransfer.files);
+      const startIndex = attachments.length;
+
+      // 1. Convert ALL files to base64 first
       const newAttachments: Attachment[] = [];
-      
-      for (let i = 0; i < e.dataTransfer.files.length; i++) {
-        const file = e.dataTransfer.files[i];
-        
+      for (const file of filesToProcess) {
         try {
           const base64 = await fileToBase64(file);
           newAttachments.push({
@@ -225,7 +335,46 @@ const InputArea: React.FC<InputAreaProps> = ({ onSend, isLoading, selectedModel,
         }
       }
 
+      // 2. Add ALL attachments at once
       setAttachments(prev => [...prev, ...newAttachments]);
+
+      // 3. Mark ALL as uploading
+      const uploadingSet = new Set<number>();
+      for (let i = 0; i < newAttachments.length; i++) {
+        uploadingSet.add(startIndex + i);
+      }
+      setUploadingIndexes(prev => new Set([...prev, ...uploadingSet]));
+
+      // 4. Upload ALL in parallel
+      newAttachments.forEach(async (att, i) => {
+        const attachmentIndex = startIndex + i;
+        try {
+          console.log('Uploading', att.name, 'to Storage...');
+          const storageUrl = await uploadAttachmentToStorage(att.data!, att.mimeType, user.uid);
+          console.log('Uploaded:', att.name, '→', storageUrl);
+
+          // 5. Add storageUrl (keep data for Gemini)
+          setAttachments(prev => prev.map((a, idx) =>
+            idx === attachmentIndex
+              ? { ...a, storageUrl }
+              : a
+          ));
+
+          // 6. Remove from uploading
+          setUploadingIndexes(prev => {
+            const updated = new Set(prev);
+            updated.delete(attachmentIndex);
+            return updated;
+          });
+        } catch (err: any) {
+          console.error("Failed to upload", att.name, err);
+          setUploadingIndexes(prev => {
+            const updated = new Set(prev);
+            updated.delete(attachmentIndex);
+            return updated;
+          });
+        }
+      });
     }
   };
 
@@ -240,6 +389,7 @@ const InputArea: React.FC<InputAreaProps> = ({ onSend, isLoading, selectedModel,
   const aspectRatios: AspectRatio[] = ['1:1', '3:4', '4:3', '9:16', '16:9'];
 
   const hasContent = input.trim().length > 0 || attachments.length > 0;
+  const isUploading = uploadingIndexes.size > 0;
 
   return (
     <div
@@ -383,15 +533,27 @@ const InputArea: React.FC<InputAreaProps> = ({ onSend, isLoading, selectedModel,
           {attachments.map((att, i) => (
             <div key={i} className="relative group flex-shrink-0">
               {att.mimeType.startsWith('image/') ? (
-                <img 
-                  src={`data:${att.mimeType};base64,${att.data}`} 
-                  alt="preview" 
-                  className="h-16 w-16 object-cover rounded-xl border border-gray-300 dark:border-gray-700"
-                />
+                <div className="relative">
+                  <img
+                    src={att.storageUrl || `data:${att.mimeType};base64,${att.data}`}
+                    alt="preview"
+                    className="h-16 w-16 object-cover rounded-xl border border-gray-300 dark:border-gray-700"
+                  />
+                  {uploadingIndexes.has(i) && (
+                    <div className="absolute inset-0 bg-black/50 rounded-xl flex items-center justify-center">
+                      <Loader2 size={20} className="text-white animate-spin" />
+                    </div>
+                  )}
+                </div>
               ) : (
-                <div className="h-16 w-16 bg-gray-100 dark:bg-gray-800 rounded-xl border border-gray-300 dark:border-gray-700 flex flex-col items-center justify-center text-center p-1">
+                <div className="relative h-16 w-16 bg-gray-100 dark:bg-gray-800 rounded-xl border border-gray-300 dark:border-gray-700 flex flex-col items-center justify-center text-center p-1">
                    <FileText size={24} className="text-gray-500 dark:text-gray-400 mb-1"/>
                    <span className="text-[9px] text-gray-600 dark:text-gray-300 truncate w-full leading-tight px-0.5">{att.name?.slice(0, 10)}</span>
+                   {uploadingIndexes.has(i) && (
+                    <div className="absolute inset-0 bg-black/50 rounded-xl flex items-center justify-center">
+                      <Loader2 size={20} className="text-white animate-spin" />
+                    </div>
+                  )}
                 </div>
               )}
               <button
@@ -467,14 +629,15 @@ const InputArea: React.FC<InputAreaProps> = ({ onSend, isLoading, selectedModel,
         {/* Send Button (Circular) */}
         <button
           onClick={handleSend}
-          disabled={!hasContent || isLoading}
+          disabled={!hasContent || isLoading || isUploading}
           className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-200 flex-shrink-0 mb-1 ${
-            hasContent && !isLoading
+            hasContent && !isLoading && !isUploading
               ? 'bg-black dark:bg-white text-white dark:text-black hover:bg-gray-800 dark:hover:bg-gray-200 shadow-lg scale-100'
               : 'bg-gray-100 dark:bg-[#2d2e33] text-gray-400 dark:text-gray-500 cursor-not-allowed'
           }`}
+          title={isUploading ? 'Uploading files...' : ''}
         >
-          {isImageGen ? <ImageIcon size={20} /> : <ArrowUp size={22} strokeWidth={2.5} />}
+          {isUploading ? <Loader2 size={20} className="animate-spin" /> : isImageGen ? <ImageIcon size={20} /> : <ArrowUp size={22} strokeWidth={2.5} />}
         </button>
       </div>
       

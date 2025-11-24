@@ -172,11 +172,19 @@ const App: React.FC = () => {
       await renameChatInDb(sessionId, newTitle);
     }
 
+    // Strip base64 data from attachments before saving to Firestore (keep only storageUrl)
+    const attachmentsForDb = attachments.map(att => ({
+      mimeType: att.mimeType,
+      storageUrl: att.storageUrl,
+      name: att.name
+      // NO data field - would exceed Firestore 1MB limit
+    }));
+
     const newUserMsg: ChatMessage = {
       id: Date.now().toString(),
       role: Role.USER,
       text: finalText,
-      attachments,
+      attachments: attachmentsForDb,
       timestamp: Date.now(),
     };
     await addMessageToDb(sessionId, newUserMsg);
