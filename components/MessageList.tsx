@@ -423,10 +423,10 @@ const MessageList: React.FC<MessageListProps> = ({ messages, isThinking, onEdit,
                     virtuosoRef.current?.scrollToIndex({ index: messages.length - 1, align: 'start', behavior: 'smooth' });
                 }, 100);
 
-                // Allow scrolling to shrink footer after 500ms (after scroll animation completes)
+                // Allow scrolling to shrink footer after 800ms (after scroll animation completes)
                 setTimeout(() => {
                     justSentMessageRef.current = false;
-                }, 500);
+                }, 800);
             }
         }
     }, [messages.length]);
