@@ -1,5 +1,11 @@
 @import "tailwindcss";
 
+/* 
+  Force Tailwind to use class-based dark mode (selector strategy).
+  This overrides the default media-query behavior.
+*/
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   /* Custom gray colors */
   --color-gray-750: #2d2e33;
@@ -9,6 +15,26 @@
   /* Custom animations */
   --animate-fade-in: fadeIn 0.3s ease-out;
   --animate-slide-up: slideUp 0.4s ease-out;
+}
+
+/* 
+  Ensure root level background matches theme immediately 
+  to prevent white flashes or mismatched safe-areas 
+*/
+:root {
+  background-color: #ffffff;
+  color: #111827; /* gray-900 */
+}
+
+:root.dark {
+  background-color: #0e0e10; /* your custom gray-950 */
+  color: #f3f4f6; /* gray-100 */
+}
+
+body {
+  background-color: inherit;
+  color: inherit;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 @keyframes fadeIn {

@@ -43,8 +43,8 @@ const App: React.FC = () => {
   const [appSettings, setAppSettings] = useState<AppSettings>(() => {
     try {
         const saved = localStorage.getItem('elora_settings_v1');
-        return saved ? JSON.parse(saved) : { theme: 'dark', enterToSend: true, defaultVoiceURI: '', defaultSpeechRate: 1.0, language: 'en' };
-    } catch { return { theme: 'dark', enterToSend: true, defaultVoiceURI: '', defaultSpeechRate: 1.0, language: 'en' }; }
+        return saved ? JSON.parse(saved) : { theme: 'system', enterToSend: true, defaultVoiceURI: '', defaultSpeechRate: 1.0, language: 'en' };
+    } catch { return { theme: 'system', enterToSend: true, defaultVoiceURI: '', defaultSpeechRate: 1.0, language: 'en' }; }
   });
 
   useEffect(() => {
@@ -53,6 +53,10 @@ const App: React.FC = () => {
     const applyTheme = (isDark: boolean) => {
       root.classList.toggle('dark', isDark);
       metaThemeColor?.setAttribute('content', isDark ? '#0e0e10' : '#ffffff');
+      // Force repaint to handle Tailwind transitions better
+      root.style.display = 'none';
+      root.offsetHeight; 
+      root.style.display = '';
     };
     if (appSettings.theme === 'system') {
       const systemIsDark = window.matchMedia('(prefers-color-scheme: dark)').matches;

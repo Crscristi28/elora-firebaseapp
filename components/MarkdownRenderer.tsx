@@ -19,12 +19,12 @@ const CodeBlock = ({ language, children, ...props }: any) => {
   };
 
   return (
-    <div className="relative group rounded-lg overflow-hidden my-4 border border-gray-200 dark:border-gray-700/50 bg-[#1e1e1e]">
+    <div className="relative group rounded-lg overflow-hidden my-4 border border-gray-200 dark:border-gray-700/50 bg-[#1e1e1e] shadow-sm">
       <div className="flex items-center justify-between px-3 py-1.5 bg-gray-100 dark:bg-[#2d2e33] border-b border-gray-200 dark:border-gray-700/50">
-        <span className="text-xs text-gray-600 dark:text-gray-400 lowercase font-mono">{language}</span>
+        <span className="text-xs text-gray-600 dark:text-gray-400 font-mono font-medium">{language || 'text'}</span>
         <button 
           onClick={handleCopy} 
-          className="flex items-center gap-1.5 text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-colors bg-transparent p-1 rounded"
+          className="flex items-center gap-1.5 text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-colors bg-transparent p-1 rounded hover:bg-gray-200 dark:hover:bg-white/10"
           title="Copy code"
         >
            {copied ? <Check size={14} className="text-green-500 dark:text-green-400"/> : <Copy size={14}/>}
@@ -37,7 +37,8 @@ const CodeBlock = ({ language, children, ...props }: any) => {
             style={vscDarkPlus}
             language={language}
             PreTag="div"
-            customStyle={{ margin: 0, padding: '1rem', background: 'transparent', fontSize: '0.875rem' }}
+            customStyle={{ margin: 0, padding: '1rem', background: 'transparent', fontSize: '0.875rem', lineHeight: '1.5' }}
+            codeTagProps={{ style: { fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace' } }}
         >
             {String(children).replace(/\n$/, '')}
         </SyntaxHighlighter>
@@ -71,41 +72,53 @@ const ImageBlock = ({ src, alt, ...props }: any) => {
 
 const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
   return (
-    <div className="prose prose-sm max-w-none dark:prose-invert">
+    <div className="prose prose-sm max-w-none dark:prose-invert leading-7">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         urlTransform={(value) => value} 
         components={{
           code({ node, inline, className, children, ...props }: any) {
             const match = /language-(\w+)/.exec(className || '');
-            // Treat as block if not inline, regardless of regex match
-            if (!inline) {
-              return <CodeBlock language={match ? match[1] : 'text'} children={children} {...props} />;
+            
+            // Standard Markdown logic:
+            // If inline=true -> It's `code` (single backtick)
+            // If inline=false -> It's ```code``` (triple backtick block)
+
+            if (!inline && match) {
+              return <CodeBlock language={match[1]} children={children} {...props} />;
+            } else if (!inline) {
+               // Block code without language specified
+               return <CodeBlock language="text" children={children} {...props} />;
             }
+
+            // Inline code styling
             return (
-              <code {...props} className={`${className || ''} bg-gray-200 dark:bg-gray-800 px-1.5 py-0.5 rounded text-gray-800 dark:text-gray-200 font-mono text-sm`}>
+              <code {...props} className={`${className || ''} bg-gray-200 dark:bg-white/10 px-1.5 py-0.5 rounded-md text-gray-800 dark:text-gray-200 font-mono text-[0.85em] border border-gray-300 dark:border-white/10 align-middle whitespace-nowrap`}>
                 {children}
               </code>
             );
           },
           img: ImageBlock,
           a: ({ node, ...props }) => (
-            <a {...props} className="text-blue-600 dark:text-blue-400 hover:text-blue-500 dark:hover:text-blue-300 hover:underline transition-colors" target="_blank" rel="noopener noreferrer" />
+            <a {...props} className="text-blue-600 dark:text-blue-400 hover:text-blue-500 dark:hover:text-blue-300 hover:underline transition-colors font-medium break-all" target="_blank" rel="noopener noreferrer" />
           ),
           ul: ({ node, ...props }) => (
-             <ul {...props} className="list-disc list-outside ml-4 mb-4 text-gray-700 dark:text-gray-300" />
+             <ul {...props} className="list-disc list-outside ml-4 mb-4 text-gray-700 dark:text-gray-300 space-y-1" />
           ),
           ol: ({ node, ...props }) => (
-            <ol {...props} className="list-decimal list-outside ml-4 mb-4 text-gray-700 dark:text-gray-300" />
+            <ol {...props} className="list-decimal list-outside ml-4 mb-4 text-gray-700 dark:text-gray-300 space-y-1" />
+         ),
+         li: ({ node, ...props }) => (
+            <li {...props} className="pl-1" />
          ),
          p: ({ node, ...props }) => (
-            <div {...props} className="mb-4 leading-relaxed text-gray-800 dark:text-gray-100 last:mb-0" />
+            <p {...props} className="mb-4 leading-relaxed text-gray-800 dark:text-gray-200 last:mb-0" />
          ),
          h1: ({ node, ...props }) => (
-            <h1 {...props} className="text-2xl font-bold mb-4 text-gray-900 dark:text-white mt-6 first:mt-0" />
+            <h1 {...props} className="text-2xl font-bold mb-4 text-gray-900 dark:text-white mt-8 first:mt-0 pb-2 border-b border-gray-200 dark:border-gray-800" />
          ),
          h2: ({ node, ...props }) => (
-            <h2 {...props} className="text-xl font-semibold mb-3 text-gray-900 dark:text-white mt-5 first:mt-0" />
+            <h2 {...props} className="text-xl font-semibold mb-3 text-gray-900 dark:text-white mt-6 first:mt-0" />
          ),
          h3: ({ node, ...props }) => (
             <h3 {...props} className="text-lg font-medium mb-2 text-gray-900 dark:text-white mt-4" />
@@ -114,7 +127,27 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
             <strong {...props} className="font-bold text-gray-900 dark:text-white" />
          ),
          blockquote: ({ node, ...props }) => (
-            <blockquote {...props} className="border-l-4 border-gray-300 dark:border-gray-600 pl-4 italic text-gray-600 dark:text-gray-400 my-4" />
+            <blockquote {...props} className="border-l-4 border-blue-500/30 dark:border-blue-500/50 pl-4 py-1 italic text-gray-600 dark:text-gray-400 my-4 bg-gray-50 dark:bg-white/5 rounded-r-lg" />
+         ),
+         table: ({ node, ...props }) => (
+            <div className="overflow-x-auto my-4 rounded-lg border border-gray-200 dark:border-gray-800">
+               <table {...props} className="min-w-full divide-y divide-gray-200 dark:divide-gray-800" />
+            </div>
+         ),
+         thead: ({ node, ...props }) => (
+            <thead {...props} className="bg-gray-50 dark:bg-white/5" />
+         ),
+         tbody: ({ node, ...props }) => (
+            <tbody {...props} className="divide-y divide-gray-200 dark:divide-gray-800 bg-white dark:bg-transparent" />
+         ),
+         tr: ({ node, ...props }) => (
+            <tr {...props} />
+         ),
+         th: ({ node, ...props }) => (
+            <th {...props} className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider" />
+         ),
+         td: ({ node, ...props }) => (
+            <td {...props} className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap" />
          ),
         }}
       >

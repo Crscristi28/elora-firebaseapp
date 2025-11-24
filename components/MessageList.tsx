@@ -5,7 +5,7 @@ import MarkdownRenderer from './MarkdownRenderer';
 import { 
   AlertCircle, Sparkles, Copy, Check, 
   FileText, Pencil, Volume2, Square, 
-  FileCode, FileSpreadsheet, File, Reply, Lightbulb, Settings2, X, Share2, Globe, ExternalLink, ChevronDown
+  FileCode, FileSpreadsheet, File, Reply, Lightbulb, Settings2, X, Share2, Globe, ExternalLink, ChevronDown, ArrowDown
 } from 'lucide-react';
 
 interface MessageListProps {
@@ -368,6 +368,7 @@ const MessageList: React.FC<MessageListProps> = ({ messages, isThinking, onEdit,
     const [editText, setEditText] = useState('');
     const [speakingId, setSpeakingId] = useState<string | null>(null);
     const [copiedId, setCopiedId] = useState<string | null>(null);
+    const [showScrollToBottom, setShowScrollToBottom] = useState(false);
 
     // Dynamic footer states
     const [footerHeight, setFooterHeight] = useState<string>(`${minFooterHeight}px`);
@@ -518,6 +519,10 @@ const MessageList: React.FC<MessageListProps> = ({ messages, isThinking, onEdit,
         }
     };
 
+    const scrollToBottom = () => {
+        virtuosoRef.current?.scrollToIndex({ index: messages.length - 1, align: 'start', behavior: 'smooth' });
+    };
+
     // Handle scrolling state change - shrink footer when user scrolls
     const handleScrollingStateChange = (isScrolling: boolean) => {
         // Only shrink if user is scrolling, footer is big, AND we're not in the immediate post-send period
@@ -525,6 +530,11 @@ const MessageList: React.FC<MessageListProps> = ({ messages, isThinking, onEdit,
             setFooterHeight(`${minFooterHeight}px`);
             setIsFooterBig(false);
         }
+    };
+
+    // Handle scroll position - toggle scroll-to-bottom button visibility
+    const handleAtBottomStateChange = (atBottom: boolean) => {
+        setShowScrollToBottom(!atBottom);
     };
     
     // Determine when to show the "Thinking" indicator.
@@ -552,58 +562,70 @@ const MessageList: React.FC<MessageListProps> = ({ messages, isThinking, onEdit,
 
     // Otherwise render the list
     return (
-        <Virtuoso
-            ref={virtuosoRef}
-            data={messages}
-            className="flex-1 w-full scrollbar-hide" // Use flex-1 to fill remaining space correctly
-            atBottomThreshold={60}
-            followOutput={false}
-            isScrolling={handleScrollingStateChange}
-            itemContent={(index, msg) => (
-                <MessageItem
-                    key={msg.id}
-                    msg={msg}
-                    editingId={editingId}
-                    editText={editText}
-                    speakingId={speakingId}
-                    copiedId={copiedId}
-                    voices={voices}
-                    selectedVoiceURI={selectedVoiceURI}
-                    speechRate={speechRate}
-                    showTTSSettingsId={showTTSSettingsId}
-                    onSetEditText={setEditText}
-                    onStartEditing={handleStartEditing}
-                    onCancelEditing={handleCancelEditing}
-                    onSaveEdit={handleSaveEdit}
-                    onHandleSpeak={handleSpeak}
-                    onHandleStopSpeak={handleStopSpeak}
-                    onHandleCopy={handleCopy}
-                    onHandleReply={handleReply}
-                    onHandleShare={handleShare}
-                    onToggleTTSSettings={handleToggleTTSSettings}
-                    onSaveTTSSettings={handleSaveTTSSettings}
-                    onSuggestionClick={onSuggestionClick}
-                />
-            )}
-            components={{
-                Header: () => <div className="h-30" />,
-                Footer: () => (
-                  <div style={{ height: footerHeight }}>
-                    {/* Thinking Indicator */}
-                    {showThinkingDots && (
-                       <div className="max-w-4xl mx-auto w-full px-5 py-6">
-                           <div className="flex items-center gap-3">
-                               <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white shadow-sm animate-pulse">
-                                  <Sparkles size={12} />
+        <div className="flex-1 w-full relative flex flex-col">
+            <Virtuoso
+                ref={virtuosoRef}
+                data={messages}
+                className="flex-1 w-full scrollbar-hide"
+                atBottomThreshold={60}
+                followOutput={false}
+                isScrolling={handleScrollingStateChange}
+                atBottomStateChange={handleAtBottomStateChange}
+                itemContent={(index, msg) => (
+                    <MessageItem
+                        key={msg.id}
+                        msg={msg}
+                        editingId={editingId}
+                        editText={editText}
+                        speakingId={speakingId}
+                        copiedId={copiedId}
+                        voices={voices}
+                        selectedVoiceURI={selectedVoiceURI}
+                        speechRate={speechRate}
+                        showTTSSettingsId={showTTSSettingsId}
+                        onSetEditText={setEditText}
+                        onStartEditing={handleStartEditing}
+                        onCancelEditing={handleCancelEditing}
+                        onSaveEdit={handleSaveEdit}
+                        onHandleSpeak={handleSpeak}
+                        onHandleStopSpeak={handleStopSpeak}
+                        onHandleCopy={handleCopy}
+                        onHandleReply={handleReply}
+                        onHandleShare={handleShare}
+                        onToggleTTSSettings={handleToggleTTSSettings}
+                        onSaveTTSSettings={handleSaveTTSSettings}
+                        onSuggestionClick={onSuggestionClick}
+                    />
+                )}
+                components={{
+                    Header: () => <div className="h-30" />,
+                    Footer: () => (
+                      <div style={{ height: footerHeight }}>
+                        {/* Thinking Indicator */}
+                        {showThinkingDots && (
+                           <div className="max-w-4xl mx-auto w-full px-5 py-6">
+                               <div className="flex items-center gap-3">
+                                   <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white shadow-sm animate-pulse">
+                                      <Sparkles size={12} />
+                                   </div>
+                                   <span className="text-sm font-medium text-gray-400">Thinking...</span>
                                </div>
-                               <span className="text-sm font-medium text-gray-400">Thinking...</span>
                            </div>
-                       </div>
-                    )}
-                  </div>
-                )
-            }}
-        />
+                        )}
+                      </div>
+                    )
+                }}
+            />
+            {showScrollToBottom && (
+                <button
+                    onClick={scrollToBottom}
+                    className="absolute bottom-4 left-1/2 -translate-x-1/2 z-50 p-2 bg-white dark:bg-[#1a1b1e] text-gray-600 dark:text-gray-200 rounded-full shadow-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-all"
+                    title="Scroll to bottom"
+                >
+                    <ArrowDown size={20} />
+                </button>
+            )}
+        </div>
     );
 };
 
