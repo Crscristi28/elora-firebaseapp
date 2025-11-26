@@ -2,6 +2,7 @@ import { onRequest } from "firebase-functions/v2/https";
 import { defineSecret } from "firebase-functions/params";
 import { GoogleGenAI } from "@google/genai";
 import * as admin from "firebase-admin";
+import { SUGGESTION_PROMPT } from "./prompts/suggestion";
 
 admin.initializeApp();
 
@@ -19,7 +20,7 @@ const getAI = () => {
 
 /**
  * Main chat streaming endpoint with SSE (v2)
- * Handles both regular chat and image generation
+ * Handles both regular chat and image generation + Auto-Suggestions
  */
 export const streamChat = onRequest(
   {
@@ -88,7 +89,17 @@ export const streamChat = onRequest(
         { role: "user", parts },
       ];
 
-      const systemInstruction = settings?.systemInstruction ? String(settings.systemInstruction) : undefined;
+      // --- SYSTEM INSTRUCTION CONSTRUCTION ---
+      let systemInstruction = settings?.systemInstruction ? String(settings.systemInstruction) : undefined;
+      
+      // Personalization: Inject User Name if provided
+      const userName = settings?.userName;
+      if (userName) {
+          const nameInstruction = `The user's name is "${userName}". Use it naturally in conversation where appropriate.`;
+          systemInstruction = systemInstruction 
+              ? `${nameInstruction}\n\n${systemInstruction}`
+              : nameInstruction;
+      }
 
       // Model Type Checks
       const isImageGen = modelId === "gemini-2.5-flash-image";
@@ -96,6 +107,9 @@ export const streamChat = onRequest(
       
       // Thinking Config: Enable for Flash/Pro, Disable for Lite/Image
       const isThinkingCapable = !isLite && !isImageGen;
+
+      // Track full response text for suggestions
+      let fullResponseText = "";
 
       if (isImageGen) {
         // Image generation (non-streaming)
@@ -130,9 +144,12 @@ export const streamChat = onRequest(
         // Send as single SSE event
         if (generatedContent) {
           res.write(`data: ${JSON.stringify({ text: generatedContent })}\n\n`);
+          if ((res as any).flush) (res as any).flush();
         }
         res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+        if ((res as any).flush) (res as any).flush();
         res.end();
+        return; // No suggestions for Image Gen
       } else {
         // Regular chat streaming with Google Search & Thinking
         
@@ -171,8 +188,11 @@ export const streamChat = onRequest(
                      
                      if (isThought && part.text) {
                          res.write(`data: ${JSON.stringify({ thinking: part.text })}\n\n`);
+                         if ((res as any).flush) (res as any).flush();
                      } else if (part.text) {
+                         fullResponseText += part.text; // Accumulate for suggestions
                          res.write(`data: ${JSON.stringify({ text: part.text })}\n\n`);
+                         if ((res as any).flush) (res as any).flush();
                      }
                  }
              }
@@ -180,7 +200,9 @@ export const streamChat = onRequest(
               // Fallback for simple text chunks
               const text = chunk.text;
               if (text) {
+                fullResponseText += text;
                 res.write(`data: ${JSON.stringify({ text })}\n\n`);
+                if ((res as any).flush) (res as any).flush();
               }
           }
 
@@ -203,6 +225,7 @@ export const streamChat = onRequest(
 
                if (sources.length > 0) {
                  res.write(`data: ${JSON.stringify({ sources })}\n\n`);
+                 if ((res as any).flush) (res as any).flush();
                  sentMetadata = true; 
                }
             }
@@ -213,7 +236,52 @@ export const streamChat = onRequest(
           if ((res.socket as any)?.uncork) (res.socket as any).uncork();
         }
 
+        // --- SUGGESTION GENERATION (Server-Side Pipeline) ---
+        // CHECK USER PREFERENCE: Default to true if undefined
+        const suggestionsEnabled = settings?.showSuggestions !== false;
+        
+        console.log(`[Suggestions] Enabled: ${suggestionsEnabled}, Length: ${fullResponseText.trim().length}`);
+        
+        // Only generate if enabled AND text exists and not too short
+        if (suggestionsEnabled && fullResponseText.trim().length > 10) {
+            try {
+                console.log("[Suggestions] Generating...");
+                const suggestionResp = await ai.models.generateContent({
+                    model: "gemini-2.5-flash-lite",
+                    contents: `
+                        ${SUGGESTION_PROMPT}
+                        
+                        Context - AI Response:
+                        "${fullResponseText.slice(0, 2000)}"
+                    `,
+                    config: {
+                        responseMimeType: 'application/json',
+                        temperature: 0.7
+                    }
+                });
+                
+                const suggText = suggestionResp.text;
+                
+                if (suggText) {
+                    // CLEANUP: Remove markdown blocks if present (common LLM behavior)
+                    const cleanJson = suggText.replace(/```json/g, '').replace(/```/g, '').trim();
+                    
+                    const parsed = JSON.parse(cleanJson);
+                    if (Array.isArray(parsed)) {
+                        const suggestions = parsed.slice(0, 3);
+                        res.write(`data: ${JSON.stringify({ suggestions })}\n\n`);
+                        if ((res as any).flush) (res as any).flush();
+                    }
+                }
+            } catch (err) {
+                console.error("[Suggestions] Error:", err);
+            }
+        } else {
+             console.log("[Suggestions] Skipped.");
+        }
+
         res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+        if ((res as any).flush) (res as any).flush();
         res.end();
       }
     } catch (error: any) {
@@ -221,157 +289,7 @@ export const streamChat = onRequest(
       res.write(
         `data: ${JSON.stringify({ error: error.message || "Failed to generate response" })}\n\n`
       );
+      if ((res as any).flush) (res as any).flush();
       res.end();
-    }
-  });
-
-/**
- * Intent detection endpoint (v2)
- * Detects if user wants image generation or chat
- */
-export const detectIntent = onRequest(
-  {
-    secrets: [geminiApiKey],
-    timeoutSeconds: 60,
-    memory: "256MiB",
-    cors: true,
-  },
-  async (req, res) => {
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-
-    if (req.method === "OPTIONS") {
-      res.status(200).end();
-      return;
-    }
-
-    if (req.method !== "POST") {
-      res.status(405).json({ error: "Method not allowed" });
-      return;
-    }
-
-    try {
-      const { newMessage, lastHistory } = req.body;
-
-      if (!newMessage) {
-        res.status(400).json({ error: "newMessage is required" });
-        return;
-      }
-
-      const ai = getAI();
-      const recentContext = (lastHistory || []).slice(-2)
-        .map((m: any) => `${m.role}: ${m.text}`)
-        .join('\n');
-
-      const response = await ai.models.generateContent({
-        model: "gemini-2.0-flash-lite",
-        contents: `
-Role: You are an intent classifier for an AI assistant.
-Task: Analyze the user's latest message and decide if they want to GENERATE or EDIT an image, or just Chat.
-
-Context:
-${recentContext}
-
-User Message: "${newMessage}"
-
-Instructions:
-- If the user explicitly asks to "draw", "generate", "create", "make", "paint" an image, picture, or photo, return "IMAGE".
-- If the user asks to "edit", "change", "modify" an attached image, return "IMAGE".
-- Otherwise, return "CHAT".
-
-Output: Return ONLY the word "IMAGE" or "CHAT". Do not add json or markdown.
-        `,
-        config: {
-          temperature: 0.0,
-          maxOutputTokens: 10,
-        }
-      });
-
-      const intent = response.text?.trim().toUpperCase();
-      res.json({ intent: intent === 'IMAGE' ? 'IMAGE' : 'CHAT' });
-    } catch (error: any) {
-      console.error("Intent detection error:", error);
-      res.json({ intent: 'CHAT' }); // Default to chat on error
-    }
-  });
-
-/**
- * Generate follow-up suggestions endpoint (v2)
- */
-export const generateSuggestions = onRequest(
-  {
-    secrets: [geminiApiKey],
-    timeoutSeconds: 60,
-    memory: "256MiB",
-    cors: true,
-  },
-  async (req, res) => {
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-
-    if (req.method === "OPTIONS") {
-      res.status(200).end();
-      return;
-    }
-
-    if (req.method !== "POST") {
-      res.status(405).json({ error: "Method not allowed" });
-      return;
-    }
-
-    try {
-      const { lastUserMessage, lastBotResponse } = req.body;
-
-      // Don't generate for missing data or very short answers
-      if (!lastUserMessage || !lastBotResponse || lastBotResponse.trim().length < 20) {
-        res.json({ suggestions: [] });
-        return;
-      }
-
-      const ai = getAI();
-      const response = await ai.models.generateContent({
-        model: "gemini-2.0-flash-lite",
-        contents: `
-Role: You are a helpful AI assistant whose only job is to generate 3 useful and relevant follow-up questions.
-
-Task: Based SOLELY on the AI's last response, generate 3 short, insightful follow-up questions that a HUMAN user would realistically ask next to continue the conversation in a meaningful way.
-
-AI's Last Response:
-"${lastBotResponse.slice(0, 500)}"
-
-CRITICAL RULES:
-1. The questions must be from the USER'S perspective.
-2. The questions must be directly related to the topics, concepts, or entities mentioned in the AI's response.
-3. DO NOT suggest questions that the AI should ask the user (e.g., "How can I help you?"). This is a common mistake and must be avoided.
-4. DO NOT suggest generic greetings, simple affirmations, or questions that were already answered.
-
-Output Format: Return ONLY a clean JSON array of 3 strings. Do not add any other text or markdown.
-Example Output: ["Can you explain that in simpler terms?", "What is a real-world example of that?", "How does that relate to [topic]?"]
-        `,
-        config: {
-          responseMimeType: 'application/json',
-          temperature: 0.7,
-        }
-      });
-
-      const text = response.text;
-      if (!text) {
-        res.json({ suggestions: [] });
-        return;
-      }
-
-      const suggestions = JSON.parse(text);
-      if (Array.isArray(suggestions)) {
-        // Filter out any bad/empty suggestions
-        const filtered = suggestions.filter(s => typeof s === 'string' && s.trim().length > 0).slice(0, 3);
-        res.json({ suggestions: filtered });
-      } else {
-        res.json({ suggestions: [] });
-      }
-    } catch (error: any) {
-      console.error("Suggestions error:", error);
-      res.json({ suggestions: [] });
     }
   });

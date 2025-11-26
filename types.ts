@@ -111,4 +111,6 @@ export interface AppSettings {
   defaultVoiceURI: string;
   defaultSpeechRate: number;
   language: string;
+  showSuggestions: boolean;
+  userName?: string; // Added user alias
 }

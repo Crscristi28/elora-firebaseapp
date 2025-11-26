@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
-import { Plus, MessageSquare, Trash2, X, Sparkles, Settings, ChevronDown, Image as ImageIcon, LogOut } from 'lucide-react';
-import { ChatSession, Role, UserProfile } from '../types';
+import { Plus, MessageSquare, Trash2, X, Sparkles, ChevronDown, Image as ImageIcon } from 'lucide-react';
+import { ChatSession, Role } from '../types';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -11,9 +11,6 @@ interface SidebarProps {
   onNewChat: () => void;
   onDeleteSession: (id: string, e: React.MouseEvent) => void;
   onRenameSession: (id: string, newTitle: string) => void;
-  onOpenSettings: () => void;
-  user: UserProfile | null;
-  onSignOut: () => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({
@@ -25,9 +22,6 @@ const Sidebar: React.FC<SidebarProps> = ({
   onNewChat,
   onDeleteSession,
   onRenameSession,
-  onOpenSettings,
-  user,
-  onSignOut,
 }) => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
@@ -63,17 +57,13 @@ const Sidebar: React.FC<SidebarProps> = ({
   };
 
   // Extract images from session messages (memoized to avoid re-parsing constantly)
-  // Note: In Firestore version, messages are not stored in sessions, so this will be empty
   const sessionImagesMap = useMemo(() => {
     const map: Record<string, string[]> = {};
     sessions.forEach(session => {
         const images: string[] = [];
-        // Only process if messages exist (they won't in Firestore version)
         if (session.messages && Array.isArray(session.messages)) {
             session.messages.forEach(msg => {
                 if (msg.role === Role.MODEL) {
-                    // Regex to find markdown images: ![alt](url)
-                    // We specifically look for data:image urls which are generated images
                     const regex = /!\[.*?\]\((data:image\/.*?;base64,.*?)\)/g;
                     let match;
                     while ((match = regex.exec(msg.text)) !== null) {
@@ -256,50 +246,11 @@ const Sidebar: React.FC<SidebarProps> = ({
           )}
         </div>
         
-        {/* Footer/Info - User Profile & Settings */}
-        <div className="p-4 border-t border-gray-200 dark:border-gray-800/50 shrink-0">
-             <div className="w-full flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-gray-200 dark:hover:bg-[#2d2e33] transition-colors group">
-                {/* User Avatar */}
-                {user?.photoURL ? (
-                  <img
-                    src={user.photoURL}
-                    alt="Profile"
-                    className="w-8 h-8 rounded-full ring-2 ring-white dark:ring-black/50 group-hover:ring-gray-300 dark:group-hover:ring-gray-600 object-cover"
-                  />
-                ) : (
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-indigo-500 flex items-center justify-center text-xs font-bold text-white ring-2 ring-white dark:ring-black/50 group-hover:ring-gray-300 dark:group-hover:ring-gray-600">
-                    {user?.displayName ? user.displayName[0].toUpperCase() : 'U'}
-                  </div>
-                )}
-
-                {/* User Info */}
-                <div className="flex-1 flex flex-col min-w-0">
-                    <span className="text-sm font-medium text-gray-700 dark:text-gray-200 group-hover:text-gray-900 dark:group-hover:text-white truncate">
-                      {user?.displayName || 'User'}
-                    </span>
-                    <span className="text-xs text-gray-500 group-hover:text-gray-700 dark:group-hover:text-gray-400 truncate">
-                      {user?.email || 'Pro Plan'}
-                    </span>
-                </div>
-
-                {/* Settings Button */}
-                <button
-                  onClick={onOpenSettings}
-                  className="p-1.5 rounded-lg hover:bg-gray-300/50 dark:hover:bg-gray-700/50 text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-white transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-                  title="Settings"
-                >
-                  <Settings size={16} />
-                </button>
-
-                {/* Sign Out Button */}
-                <button
-                  onClick={onSignOut}
-                  className="p-1.5 rounded-lg hover:bg-red-500/10 dark:hover:bg-red-500/20 text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 transition-colors focus:outline-none focus:ring-2 focus:ring-red-500/50"
-                  title="Sign Out"
-                >
-                  <LogOut size={16} />
-                </button>
-             </div>
+        {/* Footer (Credits) - User profile is now in Top Header */}
+        <div className="p-4 border-t border-gray-200 dark:border-gray-800/50 shrink-0 text-center">
+             <p className="text-[10px] text-gray-400 dark:text-gray-600 font-medium">
+                Powered by Gemini Pro
+             </p>
         </div>
       </aside>
     </>

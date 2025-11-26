@@ -3,41 +3,11 @@ import { Attachment, ChatMessage, ModelId, PromptSettings, TONE_PROMPTS, Source 
 // Cloud Function URLs
 const BASE_URL = 'https://us-central1-elenor-57bde.cloudfunctions.net';
 const STREAM_CHAT_URL = `${BASE_URL}/streamChat`;
-const DETECT_INTENT_URL = `${BASE_URL}/detectIntent`;
 const SUGGESTIONS_URL = `${BASE_URL}/generateSuggestions`;
 
 /**
- * Detects User Intent using Cloud Function
- * Returns 'IMAGE' if the user wants to generate/edit an image, otherwise 'CHAT'.
- */
-const detectIntent = async (newMessage: string, lastHistory: ChatMessage[]): Promise<'IMAGE' | 'CHAT'> => {
-  try {
-    const response = await fetch(DETECT_INTENT_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        newMessage,
-        lastHistory: lastHistory.slice(-2).map(m => ({
-          role: m.role,
-          text: m.text
-        }))
-      }),
-    });
-
-    if (!response.ok) {
-      return 'CHAT'; // Default to chat on error
-    }
-
-    const data = await response.json();
-    return data.intent === 'IMAGE' ? 'IMAGE' : 'CHAT';
-  } catch (e) {
-    return 'CHAT'; // Default to chat on error
-  }
-};
-
-/**
  * Streams a chat response from Gemini via Cloud Function (secure).
- * NOW WITH AGENT CAPABILITIES: Auto-switches to Image Gen model if needed.
+ * NOW WITH AGENT CAPABILITIES: Uses server-side routing or tool calling.
  */
 export const streamChatResponse = async (
   history: ChatMessage[],
@@ -45,23 +15,13 @@ export const streamChatResponse = async (
   attachments: Attachment[],
   modelId: ModelId,
   settings: PromptSettings,
+  appSettings: { showSuggestions: boolean; userName?: string }, // Updated type here
   onChunk: (text: string) => void,
   onSources?: (sources: Source[]) => void,
-  onThinking?: (text: string) => void
+  onThinking?: (text: string) => void,
+  onSuggestions?: (suggestions: string[]) => void
 ): Promise<string> => {
-  // --- AGENT ROUTING START ---
-  // If the user is NOT already in Image Gen mode, let's check if they WANT to be.
-  let activeModelId = modelId;
-
-  if (modelId !== ModelId.IMAGE_GEN) {
-    const intent = await detectIntent(newMessage, history);
-    if (intent === 'IMAGE') {
-      activeModelId = ModelId.IMAGE_GEN;
-      // Automatically switch to image generation
-    }
-  }
-  // --- AGENT ROUTING END ---
-
+  
   // Construct System Instruction
   let finalSystemInstruction = TONE_PROMPTS[settings.style];
   if (settings.systemInstruction) {
@@ -84,12 +44,14 @@ export const streamChatResponse = async (
         })),
         newMessage,
         attachments,
-        modelId: activeModelId,
+        modelId, // Pass the selected model directly - Server handles routing!
         settings: {
           temperature: settings.temperature,
           topP: settings.topP,
           systemInstruction: finalSystemInstruction,
           aspectRatio: settings.aspectRatio,
+          showSuggestions: appSettings.showSuggestions, // Pass the toggle to backend
+          userName: appSettings.userName, // Pass user name to backend
         },
       }),
     });
@@ -105,16 +67,22 @@ export const streamChatResponse = async (
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let fullText = "";
+    let buffer = ""; // Buffer for handling split chunks
 
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
 
-      // Decode the SSE chunk
+      // Decode the SSE chunk and append to buffer
       const chunk = decoder.decode(value, { stream: true });
+      buffer += chunk;
 
-      // SSE format: "data: {json}\n\n"
-      const lines = chunk.split('\n');
+      // Split by newlines to get complete SSE messages
+      const lines = buffer.split('\n');
+      
+      // Keep the last line in the buffer (it might be incomplete)
+      buffer = lines.pop() || "";
+
       for (const line of lines) {
         if (line.startsWith('data: ')) {
           try {
@@ -137,11 +105,18 @@ export const streamChatResponse = async (
               onSources(data.sources);
             }
 
+            if (data.suggestions) {
+              console.log("GeminiService: Received Suggestions:", data.suggestions); // DEBUG LOG
+              if (onSuggestions) {
+                  onSuggestions(data.suggestions);
+              }
+            }
+
             if (data.done) {
               return fullText;
             }
           } catch (e) {
-            // Ignore parse errors for partial chunks
+            console.error("GeminiService: Parse Error on line:", line, e); // DEBUG LOG
           }
         }
       }
@@ -186,31 +161,14 @@ export const streamChatResponse = async (
 /**
  * Generates quick follow-up suggestions via Cloud Function.
  * Uses gemini-2.0-flash-lite for speed and low cost.
+ * @deprecated - Use server-side pipeline instead. Kept for legacy compatibility only.
  */
 export const generateSuggestions = async (
   lastUserMessage: string,
   lastBotResponse: string
 ): Promise<string[]> => {
-  try {
-    const response = await fetch(SUGGESTIONS_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        lastUserMessage,
-        lastBotResponse
-      }),
-    });
-
-    if (!response.ok) {
-      return [];
-    }
-
-    const data = await response.json();
-    return data.suggestions || [];
-  } catch (e) {
-    console.warn("Failed to generate suggestions", e);
-    return [];
-  }
+  // Logic deprecated in favor of server-side streaming
+  return [];
 };
 
 /**

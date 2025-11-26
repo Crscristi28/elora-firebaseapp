@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
-import { ChatMessage, Role } from '../types';
+import { ChatMessage, Role, UserProfile } from '../types';
 import MarkdownRenderer from './MarkdownRenderer';
 import { 
   AlertCircle, Sparkles, Copy, Check, 
@@ -15,6 +15,7 @@ interface MessageListProps {
   onReply?: (msg: ChatMessage) => void;
   onSuggestionClick?: (text: string) => void;
   minFooterHeight: number;
+  user?: UserProfile | null; // Added user prop
 }
 
 // --- Helper Functions ---
@@ -362,7 +363,7 @@ const MessageItem = ({
 };
 
 // --- Main MessageList Component ---
-const MessageList: React.FC<MessageListProps> = ({ messages, isThinking, onEdit, onReply, onSuggestionClick, minFooterHeight }) => {
+const MessageList: React.FC<MessageListProps> = ({ messages, isThinking, onEdit, onReply, onSuggestionClick, minFooterHeight, user }) => {
     const virtuosoRef = useRef<VirtuosoHandle>(null);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editText, setEditText] = useState('');
@@ -545,13 +546,16 @@ const MessageList: React.FC<MessageListProps> = ({ messages, isThinking, onEdit,
 
     // If empty, render Welcome Screen directly
     if (messages.length === 0 && !isThinking) {
+        // Get first name or default to 'User'
+        const userName = user?.displayName ? user.displayName.split(' ')[0] : 'User';
+
         return (
             <div className="flex-1 w-full flex flex-col items-center justify-center p-4 text-center overflow-y-auto">
                 <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-teal-400 rounded-2xl flex items-center justify-center mb-6 shadow-xl shadow-blue-500/20">
                     <span className="text-3xl font-bold text-white">E</span>
                 </div>
                 <h1 className="text-3xl md:text-4xl font-bold mb-3 bg-clip-text text-transparent bg-gradient-to-r from-blue-500 to-teal-400 dark:from-blue-400 dark:to-teal-400">
-                    Hello, User
+                    Hello, {userName}
                 </h1>
                 <p className="text-gray-500 dark:text-gray-400 max-w-md text-lg">
                     Experience the power of multimodal AI. Ask questions, upload images, and explore ideas with Elora's advanced models.

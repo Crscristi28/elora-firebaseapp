@@ -4,7 +4,7 @@ import MessageList from './components/MessageList';
 import InputArea from './components/InputArea';
 import Sidebar from './components/Sidebar';
 import SettingsModal from './components/SettingsModal';
-import { streamChatResponse, generateSuggestions } from './services/geminiService';
+import { streamChatResponse } from './services/geminiService';
 import { ChevronDown, Zap, Brain, Menu, Image as ImageIcon, Check } from 'lucide-react';
 import { useAuth } from './hooks/useAuth';
 import { useFirestoreSync } from './hooks/useFirestoreSync';
@@ -34,7 +34,20 @@ const App: React.FC = () => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   const [suggestionText, setSuggestionText] = useState<string>('');
+  
+  // Streaming State (UI Only)
   const [streamingMessage, setStreamingMessage] = useState<ChatMessage | null>(null);
+
+  // Refs for Smooth Streaming & Data Safety
+  // These exist outside the render cycle to handle high-frequency updates
+  const streamBufferRef = useRef<string>(""); 
+  const streamThinkingRef = useRef<string>("");
+  const streamSourcesRef = useRef<Source[]>([]);
+  const streamSuggestionsRef = useRef<string[]>([]);
+  const animationFrameRef = useRef<number | null>(null);
+  const isStreamingRef = useRef<boolean>(false);
+  const dbDebounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+
   const [minFooterHeight, setMinFooterHeight] = useState<number>(100); // Default 100px
 
   const inputAreaRef = useRef<HTMLDivElement>(null);
@@ -43,8 +56,24 @@ const App: React.FC = () => {
   const [appSettings, setAppSettings] = useState<AppSettings>(() => {
     try {
         const saved = localStorage.getItem('elora_settings_v1');
-        return saved ? JSON.parse(saved) : { theme: 'system', enterToSend: true, defaultVoiceURI: '', defaultSpeechRate: 1.0, language: 'en' };
-    } catch { return { theme: 'system', enterToSend: true, defaultVoiceURI: '', defaultSpeechRate: 1.0, language: 'en' }; }
+        return saved ? JSON.parse(saved) : { theme: 'system', enterToSend: true, defaultVoiceURI: '', defaultSpeechRate: 1.0, language: 'en', showSuggestions: true };
+    } catch { return { theme: 'system', enterToSend: true, defaultVoiceURI: '', defaultSpeechRate: 1.0, language: 'en', showSuggestions: true }; }
+  });
+
+  // Ensure default userName is set if user logs in
+  useEffect(() => {
+      if (user?.displayName && !appSettings.userName) {
+          setAppSettings(prev => ({ ...prev, userName: user.displayName!.split(' ')[0] }));
+      }
+  }, [user, appSettings.userName]);
+
+  // --- PROMPT SETTINGS (Global/Session State) ---
+  const [promptSettings, setPromptSettings] = useState<PromptSettings>({
+    style: 'normal',
+    temperature: 1.0,
+    topP: 0.95,
+    systemInstruction: '',
+    aspectRatio: '1:1'
   });
 
   useEffect(() => {
@@ -144,9 +173,7 @@ const App: React.FC = () => {
     setSuggestionText('');
   };
 
-  // --- DEBOUNCE LOGIC (The Fix) ---
-  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
-
+  // --- MAIN SEND HANDLER (Optimized for Smoothness & Safety) ---
   const handleSendMessage = useCallback(async (text: string, attachments: Attachment[], settings: PromptSettings) => {
     if (!user?.uid) return;
 
@@ -209,104 +236,127 @@ const App: React.FC = () => {
       return;
     }
 
+    // --- STREAMING SETUP ---
+    // 1. Reset Refs
+    streamBufferRef.current = "";
+    streamThinkingRef.current = "";
+    streamSourcesRef.current = [];
+    streamSuggestionsRef.current = [];
+    isStreamingRef.current = true;
+    
+    // 2. Start Animation Loop (Smooth UI)
+    // This runs at 60fps (or whatever the screen refresh is) to update the UI
+    const updateUiLoop = () => {
+        if (!isStreamingRef.current) return;
+
+        setStreamingMessage(prev => {
+            // Optimization: Only rerender if data actually changed
+            if (prev?.text === streamBufferRef.current && 
+                prev?.thinking === streamThinkingRef.current && 
+                prev?.sources === streamSourcesRef.current &&
+                prev?.suggestions === streamSuggestionsRef.current) {
+                return prev;
+            }
+            return {
+                id: botMsgId,
+                role: Role.MODEL,
+                text: streamBufferRef.current,
+                thinking: streamThinkingRef.current,
+                sources: streamSourcesRef.current,
+                suggestions: streamSuggestionsRef.current,
+                isStreaming: true,
+                timestamp: Date.now(),
+            };
+        });
+
+        animationFrameRef.current = requestAnimationFrame(updateUiLoop);
+    };
+    animationFrameRef.current = requestAnimationFrame(updateUiLoop);
+
     try {
-      let fullResponse = "";
-      let foundSources: Source[] = []; // Track sources
-      let fullThinking = ""; // Track thinking process
-      let firstChunk = true; // Flag to hide thinking indicator on first chunk
+      let firstChunk = true; 
 
-      // Clear any existing debounce timer before starting a new stream
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current);
-      }
+      // Clear any stale debounce timer
+      if (dbDebounceTimerRef.current) clearTimeout(dbDebounceTimerRef.current);
 
-      await streamChatResponse(
+      const finalResponseText = await streamChatResponse(
         messages, finalText, attachments, selectedModel, settings,
+        { 
+            showSuggestions: appSettings.showSuggestions,
+            userName: appSettings.userName // PASS USER NAME TO BACKEND
+        }, 
         (chunk) => {
-          // Hide thinking indicator as soon as first chunk arrives
+          // Hide "Loading" spinner as soon as first chunk arrives
           if (firstChunk) {
             setIsLoading(false);
             firstChunk = false;
           }
 
-          fullResponse += chunk;
+          // A. Update the Buffer (UI Loop will pick this up automatically)
+          streamBufferRef.current += chunk;
 
-          // Update LOCAL state immediately for smooth UI streaming
-          setStreamingMessage({
-            id: newBotMessageId,
-            role: Role.MODEL,
-            text: fullResponse,
-            sources: foundSources, // Include sources
-            thinking: fullThinking, // Include thinking
-            isStreaming: true,
-            timestamp: Date.now(),
-          });
-
-          // Debounce the Firestore write operation (save money)
-          if (debounceTimerRef.current) {
-            clearTimeout(debounceTimerRef.current);
-          }
-
-          debounceTimerRef.current = setTimeout(() => {
-            console.log("Debounced write to Firestore...");
-            // Write text only for now to keep it light
-            updateMessageInDb(sessionId, newBotMessageId, { text: fullResponse });
-          }, 1500); // Write to DB every 1.5 seconds of inactivity
+          // B. Debounce the Firestore write (Save money & writes)
+          // We only write to DB every 2 seconds to avoid slamming it
+          if (dbDebounceTimerRef.current) clearTimeout(dbDebounceTimerRef.current);
+          
+          dbDebounceTimerRef.current = setTimeout(() => {
+            updateMessageInDb(sessionId, newBotMessageId, { text: streamBufferRef.current });
+          }, 2000); 
         },
         (sources) => {
-            foundSources = sources;
-            // Immediate update for sources
-            setStreamingMessage(prev => {
-                if (!prev) return null;
-                return { ...prev, sources: foundSources };
-            });
+            streamSourcesRef.current = sources;
         },
         (thoughtChunk) => {
-            fullThinking += thoughtChunk;
-            // Immediate update for thinking
+            streamThinkingRef.current += thoughtChunk;
+        },
+        (suggestions) => {
+            console.log("APP: Received Suggestions:", suggestions); // DEBUG LOG
+            streamSuggestionsRef.current = suggestions;
+            // Immediate update for suggestions (if they come in late stream)
             setStreamingMessage(prev => {
                 if (!prev) return null;
-                return { ...prev, thinking: fullThinking };
+                return { ...prev, suggestions: streamSuggestionsRef.current };
             });
         }
       );
 
-      // --- FINALIZATION ---
-      // Clear the timer one last time
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current);
-      }
+      // --- CLEANUP & FINAL SYNC ---
+      isStreamingRef.current = false;
+      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+      if (dbDebounceTimerRef.current) clearTimeout(dbDebounceTimerRef.current);
 
-      // Clear streaming state (now rely on Firestore)
-      setStreamingMessage(null);
-
-      // Perform one final, guaranteed write with the complete response AND sources AND thinking
+      // Final guaranteed DB write with COMPLETE data
+      // CRITICAL: Do this BEFORE clearing local state to avoid UI flicker/data loss
       await updateMessageInDb(sessionId, newBotMessageId, {
-          text: fullResponse,
+          text: finalResponseText, // Use the resolved promise value!
           isStreaming: false,
-          sources: foundSources,
-          thinking: fullThinking
+          sources: streamSourcesRef.current,
+          thinking: streamThinkingRef.current,
+          suggestions: streamSuggestionsRef.current // Save suggestions to DB
       });
 
-      // Generate suggestions quietly in background (no loading indicator, no scroll jump)
-      if (!fullResponse.includes("data:image") && fullResponse.length > 50) {
-          const suggestions = await generateSuggestions(finalText, fullResponse);
-          if (suggestions.length > 0) {
-              await updateMessageInDb(sessionId, newBotMessageId, { suggestions });
-          }
-      }
+      // Now safe to clear
+      setStreamingMessage(null);
 
     } catch (error: any) {
       console.error("Failed to generate response", error);
-      setStreamingMessage(null); // Clear streaming state on error
-      setIsLoading(false); // Turn off loading on error
+      
+      // Cleanup on error
+      isStreamingRef.current = false;
+      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+      if (dbDebounceTimerRef.current) clearTimeout(dbDebounceTimerRef.current);
+      
+      setStreamingMessage(null); 
+      setIsLoading(false); 
+      
       await updateMessageInDb(sessionId, newBotMessageId, {
         text: error.message || "Something went wrong.",
         error: true,
         isStreaming: false
       });
     }
-  }, [currentSessionId, user?.uid, messages, selectedModel, replyingTo, sessions, addMessageToDb, updateMessageInDb, renameChatInDb, createNewChatInDb, setCurrentSessionId]);
+  }, [currentSessionId, user?.uid, messages, selectedModel, replyingTo, sessions, addMessageToDb, updateMessageInDb, renameChatInDb, createNewChatInDb, setCurrentSessionId, appSettings.showSuggestions, appSettings.userName]);
+
 
   const activeModelConfig = MODELS.find(m => m.id === selectedModel) || MODELS[0];
 
@@ -361,9 +411,26 @@ const App: React.FC = () => {
       );
   }
 
+  // Create a modified user object with the preferred name for the MessageList
+  const userWithPreferredName = user ? {
+      ...user,
+      displayName: appSettings.userName || user.displayName
+  } : null;
+
   return (
     <div className="fixed inset-0 flex bg-white dark:bg-[#0e0e10] text-gray-900 dark:text-gray-100 font-sans overflow-hidden selection:bg-blue-500/30">
-      <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} settings={appSettings} onUpdateSettings={setAppSettings} sessions={sessions} onClearAllChats={() => { /* TODO: Cloud function to clear all */ }} />
+      <SettingsModal 
+        isOpen={isSettingsOpen} 
+        onClose={() => setIsSettingsOpen(false)} 
+        settings={appSettings} 
+        onUpdateSettings={setAppSettings} 
+        sessions={sessions} 
+        onClearAllChats={() => { /* TODO */ }} 
+        user={user}
+        onSignOut={() => signOut(auth)}
+        promptSettings={promptSettings}
+        onUpdatePromptSettings={setPromptSettings}
+      />
       <Sidebar
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
@@ -373,9 +440,6 @@ const App: React.FC = () => {
         onNewChat={createNewChat}
         onDeleteSession={(id, e) => { e.stopPropagation(); deleteChatInDb(id); }}
         onRenameSession={renameChatInDb}
-        onOpenSettings={() => setIsSettingsOpen(true)}
-        user={user}
-        onSignOut={() => signOut(auth)}
       />
       <div className="flex-1 flex flex-col h-full relative min-w-0 bg-white dark:bg-[#0e0e10]">
           {/* FLOATING ISLAND HEADER */}
@@ -412,7 +476,12 @@ const App: React.FC = () => {
                   )}
               </div>
               <div className="mt-3 pointer-events-auto">
-                  <button className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-md shadow-sm border border-white/20 text-gray-700 dark:text-gray-200 hover:bg-white/20 transition-all active:scale-95">{user.photoURL ? <img src={user.photoURL} alt="Profile" className="w-full h-full object-cover rounded-full" /> : <span>{user.displayName ? user.displayName[0].toUpperCase() : 'U'}</span>}</button>
+                  <button 
+                    onClick={() => setIsSettingsOpen(true)} // User Avatar triggers Settings
+                    className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-md shadow-sm border border-white/20 text-gray-700 dark:text-gray-200 hover:bg-white/20 transition-all active:scale-95 overflow-hidden p-0"
+                  >
+                    {user.photoURL ? <img src={user.photoURL} alt="Profile" className="w-full h-full object-cover" /> : <span>{user.displayName ? user.displayName[0].toUpperCase() : 'U'}</span>}
+                  </button>
               </div>
           </div>
           {/* Chat Area */}
@@ -424,9 +493,19 @@ const App: React.FC = () => {
               onReply={handleReply}
               onSuggestionClick={handleSuggestionClick}
               minFooterHeight={minFooterHeight}
+              user={userWithPreferredName} // Pass the customized user object
             />
             <div ref={inputAreaRef}>
-              <InputArea onSend={handleSendMessage} isLoading={isLoading} selectedModel={selectedModel} replyingTo={replyingTo} onClearReply={handleClearReply} initialText={suggestionText} onClearInitialText={handleClearSuggestion} />
+              <InputArea 
+                onSend={handleSendMessage} 
+                isLoading={isLoading} 
+                selectedModel={selectedModel} 
+                replyingTo={replyingTo} 
+                onClearReply={handleClearReply} 
+                initialText={suggestionText} 
+                onClearInitialText={handleClearSuggestion}
+                settings={promptSettings} // PASSING GLOBAL SETTINGS
+              />
             </div>
           </div>
       </div>
