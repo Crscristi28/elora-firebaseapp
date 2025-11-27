@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { ChatMessage, Role, Attachment, ModelId, MODELS, ChatSession, PromptSettings, AppSettings, UserProfile, Source } from './types';
 import MessageList from './components/MessageList';
 import InputArea from './components/InputArea';
@@ -281,7 +281,7 @@ const App: React.FC = () => {
                 return prev;
             }
             return {
-                id: botMsgId,
+                id: newBotMessageId,
                 role: Role.MODEL,
                 text: displayedBufferRef.current, // Use the SMOOTH buffer
                 thinking: streamThinkingRef.current,
@@ -413,6 +413,31 @@ const App: React.FC = () => {
     }
   };
 
+  // Create a modified user object with the preferred name for the MessageList
+  const userWithPreferredName = user ? {
+      ...user,
+      displayName: appSettings.userName || user.displayName
+  } : null;
+
+  // Smart message list that prevents flicker during streaming transition
+  const displayMessages = useMemo(() => {
+    if (!streamingMessage) {
+      return messages;
+    }
+
+    const currentDisplayed = [...messages];
+    const existingBotMessageIndex = currentDisplayed.findIndex(
+      (msg) => msg.id === streamingMessage.id
+    );
+
+    if (existingBotMessageIndex !== -1) {
+      currentDisplayed[existingBotMessageIndex] = streamingMessage;
+    } else {
+      currentDisplayed.push(streamingMessage);
+    }
+    return currentDisplayed;
+  }, [messages, streamingMessage]);
+
   // --- RENDER LOGIC ---
   if (authLoading || (user && sessionsLoading)) {
       return <div className="fixed inset-0 flex items-center justify-center bg-white dark:bg-[#0e0e10] text-gray-500">Loading...</div>;
@@ -433,12 +458,6 @@ const App: React.FC = () => {
         </div>
       );
   }
-
-  // Create a modified user object with the preferred name for the MessageList
-  const userWithPreferredName = user ? {
-      ...user,
-      displayName: appSettings.userName || user.displayName
-  } : null;
 
   return (
     <div className="fixed inset-0 flex bg-white dark:bg-[#0e0e10] text-gray-900 dark:text-gray-100 font-sans overflow-hidden selection:bg-blue-500/30">
@@ -510,7 +529,7 @@ const App: React.FC = () => {
           {/* Chat Area */}
           <div className="flex-1 overflow-hidden relative flex flex-col bg-white dark:bg-[#0e0e10]" style={{ maskImage: 'linear-gradient(to bottom, transparent 0px, black 120px)' }}>
             <MessageList
-              messages={streamingMessage ? [...messages, streamingMessage] : messages}
+              messages={displayMessages}
               isThinking={isLoading}
               onEdit={handleEditMessage}
               onReply={handleReply}
