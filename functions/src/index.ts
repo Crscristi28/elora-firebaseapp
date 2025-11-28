@@ -153,24 +153,48 @@ export const streamChat = onRequest(
       } else {
         // Regular chat streaming with Google Search & Thinking
         
-        // Configure Thinking if capable
-        // Use camelCase to match SDK types
-        const thinkingConfig = isThinkingCapable ? {
-            includeThoughts: true
-        } : undefined;
+        // Check if Pro model
+        const isPro = modelId === "gemini-3-pro-preview";
 
-        // Configure Search
-        const tools: any[] = [{ googleSearch: {} }];
+        // Configure Thinking based on model type
+        let thinkingConfig: any = undefined;
+
+        if (isThinkingCapable) {
+            if (isPro) {
+                // Gemini 3 Pro: uses thinkingLevel
+                thinkingConfig = {
+                    includeThoughts: true,
+                    thinkingLevel: "low"
+                };
+            } else {
+                // Gemini 2.5 Flash: uses thinkingBudget
+                thinkingConfig = {
+                    includeThoughts: true,
+                    thinkingBudget: -1  // dynamic
+                };
+            }
+        }
+
+        // Configure Tools based on model
+
+        const tools: any[] = isPro
+            ? [
+                { googleSearch: {} },
+                { codeExecution: {} },
+                { urlContext: {} }
+              ]
+            : [{ googleSearch: {} }];  // Flash: only search
 
         const result = await ai.models.generateContentStream({
           model: modelId || "gemini-2.5-flash",
           contents,
           config: {
             tools,
-            thinkingConfig, 
+            thinkingConfig,
             temperature: settings?.temperature ?? 1.0,
             topP: settings?.topP ?? 0.95,
-            systemInstruction: systemInstruction, 
+            maxOutputTokens: 65536,
+            systemInstruction: systemInstruction,
           },
         });
 
