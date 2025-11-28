@@ -123,9 +123,16 @@ const InputArea: React.FC<InputAreaProps> = ({ onSend, isLoading, selectedModel,
   }, [input]);
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    // Check if on mobile (screen width < 768px)
+    const isMobile = window.innerWidth < 768;
+
     if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
+      if (!isMobile) {
+          // Desktop: Prevent default (newline) and send
+          e.preventDefault();
+          handleSend();
+      }
+      // Mobile: Do nothing (let default behavior happen = newline)
     }
   };
 
@@ -467,18 +474,20 @@ const InputArea: React.FC<InputAreaProps> = ({ onSend, isLoading, selectedModel,
             style={{ height: '24px', maxHeight: '120px' }}
           />
           
-          {/* Mic Icon (inside pill) */}
-          <button
-            onClick={toggleListening}
-            className={`ml-2 p-1 rounded-full transition-all duration-200 ${
-              isListening 
-                ? 'text-red-500 animate-pulse' 
-                : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-200'
-            }`}
-            title="Dictate"
-          >
-            {isListening ? <Square size={18} fill="currentColor" /> : <Mic size={22} />}
-          </button>
+          {/* Mic Icon (inside pill) - Hidden when typing */}
+          {(!input.trim() || isListening) && (
+            <button
+                onClick={toggleListening}
+                className={`ml-2 p-1 rounded-full transition-all duration-200 ${
+                isListening 
+                    ? 'text-red-500 animate-pulse' 
+                    : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-200'
+                }`}
+                title="Dictate"
+            >
+                {isListening ? <Square size={18} fill="currentColor" /> : <Mic size={22} />}
+            </button>
+          )}
         </div>
 
         {/* Send Button (Circular) */}
