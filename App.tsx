@@ -40,11 +40,12 @@ const App: React.FC = () => {
 
   // Refs for Smooth Streaming & Data Safety
   // These exist outside the render cycle to handle high-frequency updates
-  const streamBufferRef = useRef<string>(""); 
+  const streamBufferRef = useRef<string>("");
   const displayedBufferRef = useRef<string>(""); // NEW: Tracks what is currently on screen (Smooth Typing)
   const streamThinkingRef = useRef<string>("");
   const streamSourcesRef = useRef<Source[]>([]);
   const streamSuggestionsRef = useRef<string[]>([]);
+  const streamThoughtSignatureRef = useRef<string | undefined>(undefined); // Gemini 3 Pro: For multi-turn with tools
   const animationFrameRef = useRef<number | null>(null);
   const isStreamingRef = useRef<boolean>(false);
   const dbDebounceTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -244,6 +245,7 @@ const App: React.FC = () => {
     streamThinkingRef.current = "";
     streamSourcesRef.current = [];
     streamSuggestionsRef.current = [];
+    streamThoughtSignatureRef.current = undefined; // Reset thought signature
     isStreamingRef.current = true;
     
     // 2. Start Animation Loop (Smooth UI with Token Interpolation)
@@ -340,6 +342,11 @@ const App: React.FC = () => {
                 if (!prev) return null;
                 return { ...prev, suggestions: streamSuggestionsRef.current };
             });
+        },
+        // Gemini 3 Pro: Capture thought signature for multi-turn continuity
+        (signature) => {
+            console.log("APP: Received Thought Signature"); // DEBUG LOG
+            streamThoughtSignatureRef.current = signature;
         }
       );
 
@@ -355,7 +362,8 @@ const App: React.FC = () => {
           isStreaming: false,
           sources: streamSourcesRef.current,
           thinking: streamThinkingRef.current,
-          suggestions: streamSuggestionsRef.current // Save suggestions to DB
+          suggestions: streamSuggestionsRef.current, // Save suggestions to DB
+          thoughtSignature: streamThoughtSignatureRef.current // Gemini 3 Pro: Save for multi-turn
       });
 
       // Now safe to clear

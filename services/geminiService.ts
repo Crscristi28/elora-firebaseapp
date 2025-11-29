@@ -19,7 +19,8 @@ export const streamChatResponse = async (
   onChunk: (text: string) => void,
   onSources?: (sources: Source[]) => void,
   onThinking?: (text: string) => void,
-  onSuggestions?: (suggestions: string[]) => void
+  onSuggestions?: (suggestions: string[]) => void,
+  onThoughtSignature?: (signature: string) => void // Gemini 3 Pro: Callback for thought signature
 ): Promise<string> => {
   
   // Construct System Instruction
@@ -38,9 +39,11 @@ export const streamChatResponse = async (
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
+        // Include thoughtSignature in history for Gemini 3 Pro multi-turn with tools
         history: history.map(msg => ({
           role: msg.role,
           text: msg.text,
+          ...(msg.thoughtSignature && { thoughtSignature: msg.thoughtSignature }),
         })),
         newMessage,
         attachments,
@@ -110,6 +113,12 @@ export const streamChatResponse = async (
               if (onSuggestions) {
                   onSuggestions(data.suggestions);
               }
+            }
+
+            // Gemini 3 Pro: Capture thought signature for multi-turn continuity
+            if (data.thoughtSignature && onThoughtSignature) {
+              console.log("GeminiService: Received Thought Signature"); // DEBUG LOG
+              onThoughtSignature(data.thoughtSignature);
             }
 
             if (data.done) {
