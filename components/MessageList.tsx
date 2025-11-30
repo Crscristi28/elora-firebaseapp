@@ -583,15 +583,12 @@ const MessageList: React.FC<MessageListProps> = ({ messages, isThinking, onEdit,
         const userName = user?.displayName ? user.displayName.split(' ')[0] : 'User';
 
         return (
-            <div className="flex-1 w-full flex flex-col items-center justify-center p-4 text-center overflow-y-auto">
-                <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-teal-400 rounded-2xl flex items-center justify-center mb-6 shadow-xl shadow-blue-500/20">
-                    <span className="text-3xl font-bold text-white">E</span>
-                </div>
-                <h1 className="text-3xl md:text-4xl font-bold mb-3 bg-clip-text text-transparent bg-gradient-to-r from-blue-500 to-teal-400 dark:from-blue-400 dark:to-teal-400">
+            <div className="flex-1 w-full flex flex-col items-start justify-start pt-48 px-6 md:px-10 overflow-y-auto">
+                <h1 className="text-xl md:text-2xl font-bold mb-2 bg-clip-text text-transparent bg-gradient-to-r from-blue-500 to-teal-400 dark:from-blue-400 dark:to-teal-400">
                     Hello, {userName}
                 </h1>
-                <p className="text-gray-500 dark:text-gray-400 max-w-md text-lg">
-                    Experience the power of multimodal AI. Ask questions, upload images, and explore ideas with Elora's advanced models.
+                <p className="text-3xl md:text-4xl text-gray-900 dark:text-white font-medium">
+                    How can I help you today?
                 </p>
             </div>
         );
