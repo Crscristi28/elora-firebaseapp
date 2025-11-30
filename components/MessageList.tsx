@@ -99,7 +99,7 @@ const MessageItem = ({
     const isSingleImage = hasAttachments && msg.attachments.length === 1 && msg.attachments[0].mimeType.startsWith('image/');
 
     return (
-      <div className="w-full py-4 hover:bg-gray-50/50 dark:hover:bg-white/[0.02] transition-colors group">
+      <div className="w-full py-4 group">
         <div className="max-w-4xl mx-auto w-full px-5 md:px-8 flex flex-col items-end">
 
             {/* 1. Attachments Display (Adaptive) */}
@@ -203,7 +203,7 @@ const MessageItem = ({
 
   // --- BOT MESSAGE LAYOUT (GEMINI STYLE) ---
   return (
-    <div className="flex flex-col w-full px-5 py-6 md:px-8 hover:bg-gray-50/50 dark:hover:bg-white/[0.02] transition-colors group">
+    <div className="flex flex-col w-full px-5 py-6 md:px-8 group">
       <div className="max-w-4xl mx-auto w-full">
         
         {/* HEADER: Avatar + Name + Thinking Toggle */}

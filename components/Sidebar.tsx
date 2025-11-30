@@ -209,9 +209,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                         <button
                             type="button"
                             onClick={(e) => onDeleteSession(session.id, e)}
-                            className={`p-1.5 rounded-lg hover:bg-red-500/10 dark:hover:bg-red-500/20 text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-red-500/50 ${
-                            isActive ? 'md:opacity-0 md:group-hover:opacity-100' : ''
-                            }`}
+                            className="p-1.5 rounded-lg hover:bg-red-500/10 dark:hover:bg-red-500/20 text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 transition-colors opacity-100 md:opacity-0 md:group-hover:opacity-100 focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-red-500/50"
                             aria-label={`Delete chat: ${session.title || 'New Chat'}`}
                         >
                             <Trash2 size={14} />
