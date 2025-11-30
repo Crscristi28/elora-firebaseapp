@@ -40,6 +40,29 @@ const formatFileSize = (base64: string) => {
   }
 };
 
+// --- ThinkingPlaceholder Component (New) ---
+// Displays a ping animation and changing text to indicate AI processing.
+// This solves the "Zero-sized element" error by providing height.
+const ThinkingPlaceholder = () => {
+    const [text, setText] = useState('Just a sec...');
+
+    useEffect(() => {
+        const timer1 = setTimeout(() => setText('Analyzing context...'), 2500);
+        const timer2 = setTimeout(() => setText('Thinking...'), 5000);
+        return () => { clearTimeout(timer1); clearTimeout(timer2); };
+    }, []);
+
+    return (
+        <div className="flex items-center gap-2 animate-fade-in select-none py-2">
+            <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+            </span>
+            <span className="text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wide">{text}</span>
+        </div>
+    );
+};
+
 // --- MessageItem Component ---
 const MessageItem = ({
   msg,
@@ -68,11 +91,6 @@ const MessageItem = ({
   // Local state for Thinking Process toggle
   const [isThinkingExpanded, setIsThinkingExpanded] = useState(false);
 
-  // Don't render content if it's a placeholder waiting for text.
-  if (msg.role === Role.MODEL && msg.isStreaming && (!msg.text || msg.text.length === 0)) {
-      return null;
-  }
-  
   const isUser = msg.role === Role.USER;
 
   // --- USER MESSAGE LAYOUT (BUBBLE) ---
@@ -190,9 +208,13 @@ const MessageItem = ({
         
         {/* HEADER: Avatar + Name + Thinking Toggle */}
         <div className="flex items-center gap-3 mb-3 select-none">
-            {/* Avatar */}
+            {/* Avatar - pulses with purple color when streaming without text, blue when done */}
             <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 shadow-sm ${
-                msg.error ? 'bg-red-100 text-red-500' : 'bg-gradient-to-br from-blue-500 to-indigo-600 text-white'
+                msg.error
+                  ? 'bg-red-100 text-red-500'
+                  : msg.isStreaming && (!msg.text || msg.text.length === 0)
+                    ? 'bg-gradient-to-br from-blue-500 to-purple-600 text-white animate-pulse'
+                    : 'bg-gradient-to-br from-blue-500 to-indigo-600 text-white'
             }`}>
                {msg.error ? <AlertCircle size={14} /> : <Sparkles size={12} />}
             </div>
@@ -200,11 +222,7 @@ const MessageItem = ({
             {/* Name & Model Badge */}
             <div className="flex items-center gap-2">
                 <span className="text-sm font-bold text-gray-900 dark:text-gray-100">Elora</span>
-                {/* Streaming Indicator */}
-                {msg.isStreaming && !msg.text && (
-                     <span className="text-xs text-gray-400 animate-pulse">Thinking...</span>
-                )}
-                
+
                 {/* THINKING PROCESS TOGGLE */}
                 {msg.thinking && (
                     <button 
@@ -228,9 +246,13 @@ const MessageItem = ({
 
         {/* BODY: Clean Text (No Bubble) */}
         <div className="pl-0 md:pl-9 w-full">
-            <div className="text-[15px] md:text-[16px] leading-7 text-gray-800 dark:text-gray-200 markdown-body font-sans antialiased">
-                 <MarkdownRenderer content={msg.text} />
-            </div>
+            {msg.isStreaming && (!msg.text || msg.text.length === 0) ? (
+                <ThinkingPlaceholder />
+            ) : (
+                <div className="text-[15px] md:text-[16px] leading-7 text-gray-800 dark:text-gray-200 markdown-body font-sans antialiased">
+                     <MarkdownRenderer content={msg.text} />
+                </div>
+            )}
 
             {/* Generated Images (from AI like Elora Image) */}
             {msg.attachments && msg.attachments.length > 0 && (
@@ -554,12 +576,6 @@ const MessageList: React.FC<MessageListProps> = ({ messages, isThinking, onEdit,
     const handleAtBottomStateChange = (atBottom: boolean) => {
         setShowScrollToBottom(!atBottom);
     };
-    
-    // Determine when to show the "Thinking" indicator.
-    // Show ONLY before bot responds - never show after streaming or during suggestions
-    const lastMessage = messages[messages.length - 1];
-    const hasBotResponse = lastMessage?.role === Role.MODEL && lastMessage.text.length > 0;
-    const showThinkingDots = isThinking && !hasBotResponse;
 
     // If empty, render Welcome Screen directly
     if (messages.length === 0 && !isThinking) {
@@ -619,22 +635,8 @@ const MessageList: React.FC<MessageListProps> = ({ messages, isThinking, onEdit,
                     />
                 )}
                 components={{
-                    Header: () => <div className="h-30" />,
-                    Footer: () => (
-                      <div style={{ height: footerHeight }}>
-                        {/* Thinking Indicator */}
-                        {showThinkingDots && (
-                           <div className="max-w-4xl mx-auto w-full px-5 py-6">
-                               <div className="flex items-center gap-3">
-                                   <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white shadow-sm animate-pulse">
-                                      <Sparkles size={12} />
-                                   </div>
-                                   <span className="text-sm font-medium text-gray-400">Thinking...</span>
-                               </div>
-                           </div>
-                        )}
-                      </div>
-                    )
+                    Header: () => <div className="h-20" />,
+                    Footer: () => <div style={{ height: footerHeight }} />
                 }}
             />
             {showScrollToBottom && (
