@@ -5,6 +5,7 @@ import InputArea from './components/InputArea';
 import Sidebar from './components/Sidebar';
 import SettingsModal from './components/SettingsModal';
 import { streamChatResponse } from './services/geminiService';
+import { uploadGeneratedImage } from './services/transformService';
 import { ChevronDown, Zap, Brain, Menu, Image as ImageIcon, Check } from 'lucide-react';
 import { useAuth } from './hooks/useAuth';
 import { useFirestoreSync } from './hooks/useFirestoreSync';
@@ -40,11 +41,11 @@ const App: React.FC = () => {
 
   // Refs for Smooth Streaming & Data Safety
   // These exist outside the render cycle to handle high-frequency updates
-  const streamBufferRef = useRef<string>(""); 
-  const displayedBufferRef = useRef<string>(""); // NEW: Tracks what is currently on screen (Smooth Typing)
+  const streamBufferRef = useRef<string>("");
   const streamThinkingRef = useRef<string>("");
   const streamSourcesRef = useRef<Source[]>([]);
   const streamSuggestionsRef = useRef<string[]>([]);
+  const streamAttachmentsRef = useRef<Attachment[]>([]);
   const animationFrameRef = useRef<number | null>(null);
   const isStreamingRef = useRef<boolean>(false);
   const dbDebounceTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -240,53 +241,33 @@ const App: React.FC = () => {
     // --- STREAMING SETUP ---
     // 1. Reset Refs
     streamBufferRef.current = "";
-    displayedBufferRef.current = ""; // Reset UI buffer
     streamThinkingRef.current = "";
     streamSourcesRef.current = [];
     streamSuggestionsRef.current = [];
+    streamAttachmentsRef.current = [];
     isStreamingRef.current = true;
     
-    // 2. Start Animation Loop (Smooth UI with Token Interpolation)
+    // 2. Start Animation Loop (Instant display - no char-by-char delay)
     const updateUiLoop = () => {
         if (!isStreamingRef.current) return;
 
-        // --- SMOOTH TYPING ALGORITHM ---
-        const targetText = streamBufferRef.current;
-        const currentText = displayedBufferRef.current;
-
-        if (currentText.length < targetText.length) {
-            // Calculate distance to target
-            const distance = targetText.length - currentText.length;
-            
-            // Variable speed: 
-            // If distance is huge (copy-paste or fast stream), speed up (add 1/8th).
-            // If distance is small (end of stream), slow down to min 1-2 chars per frame for natural feel.
-            // Min speed 1 ensures it always eventually finishes.
-            const speed = Math.ceil(distance / 8); 
-            
-            // Append the next chunk
-            const nextChunk = targetText.slice(currentText.length, currentText.length + speed);
-            displayedBufferRef.current += nextChunk;
-        } else if (currentText.length > targetText.length) {
-            // Handle rare case where buffer might reset/shrink (safety)
-            displayedBufferRef.current = targetText;
-        }
-
         setStreamingMessage(prev => {
-            // Optimization: Only rerender if VISIBLE data actually changed
-            if (prev?.text === displayedBufferRef.current && 
-                prev?.thinking === streamThinkingRef.current && 
+            // Optimization: Only rerender if data actually changed
+            if (prev?.text === streamBufferRef.current &&
+                prev?.thinking === streamThinkingRef.current &&
                 prev?.sources === streamSourcesRef.current &&
-                prev?.suggestions === streamSuggestionsRef.current) {
+                prev?.suggestions === streamSuggestionsRef.current &&
+                prev?.attachments === streamAttachmentsRef.current) {
                 return prev;
             }
             return {
                 id: newBotMessageId,
                 role: Role.MODEL,
-                text: displayedBufferRef.current, // Use the SMOOTH buffer
+                text: streamBufferRef.current, // Direct display - no smooth typing delay
                 thinking: streamThinkingRef.current,
                 sources: streamSourcesRef.current,
                 suggestions: streamSuggestionsRef.current,
+                attachments: streamAttachmentsRef.current, // Include generated images
                 isStreaming: true,
                 timestamp: Date.now(),
             };
@@ -340,6 +321,22 @@ const App: React.FC = () => {
                 if (!prev) return null;
                 return { ...prev, suggestions: streamSuggestionsRef.current };
             });
+        },
+        async (imageData) => {
+            console.log("APP: onImage called!", imageData.mimeType);
+            // Upload generated image to Storage and add as attachment
+            if (user?.uid && sessionId) {
+                try {
+                    console.log("APP: Uploading to Storage...");
+                    const attachment = await uploadGeneratedImage(imageData, user.uid, sessionId);
+                    console.log("APP: Upload done, storageUrl:", attachment.storageUrl);
+                    streamAttachmentsRef.current = [...streamAttachmentsRef.current, attachment];
+                } catch (err) {
+                    console.error("APP: Failed to upload generated image:", err);
+                }
+            } else {
+                console.log("APP: Missing user or sessionId!", user?.uid, sessionId);
+            }
         }
       );
 
@@ -355,7 +352,8 @@ const App: React.FC = () => {
           isStreaming: false,
           sources: streamSourcesRef.current,
           thinking: streamThinkingRef.current,
-          suggestions: streamSuggestionsRef.current // Save suggestions to DB
+          suggestions: streamSuggestionsRef.current, // Save suggestions to DB
+          attachments: streamAttachmentsRef.current, // Save generated images
       });
 
       // Now safe to clear

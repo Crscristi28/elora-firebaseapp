@@ -231,7 +231,24 @@ const MessageItem = ({
             <div className="text-[15px] md:text-[16px] leading-7 text-gray-800 dark:text-gray-200 markdown-body font-sans antialiased">
                  <MarkdownRenderer content={msg.text} />
             </div>
-            
+
+            {/* Generated Images (from AI like Elora Image) */}
+            {msg.attachments && msg.attachments.length > 0 && (
+                <div className="mt-4 flex flex-wrap gap-3">
+                    {msg.attachments.map((att: any, idx: number) => (
+                        att.mimeType?.startsWith('image/') && (att.storageUrl || att.data) && (
+                            <div key={idx} className="relative rounded-2xl overflow-hidden border border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-[#1a1b1e] max-w-[400px]">
+                                <img
+                                    src={att.storageUrl || `data:${att.mimeType};base64,${att.data}`}
+                                    alt="Generated image"
+                                    className="w-full h-auto object-contain max-h-[400px]"
+                                />
+                            </div>
+                        )
+                    ))}
+                </div>
+            )}
+
             {/* Suggestion Chips (Integrated directly below text) */}
             {!msg.isStreaming && msg.suggestions && msg.suggestions.length > 0 && (
                 <div className="flex flex-wrap gap-2 mt-4 animate-fade-in">

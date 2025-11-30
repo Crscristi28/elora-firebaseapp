@@ -1,8 +1,6 @@
-
 import { Attachment, ChatMessage } from "../types";
-// We will import firebase storage functions here later
-// import { ref, uploadString, getDownloadURL } from "firebase/storage";
-// import { storage } from "../firebase";
+import { ref, uploadString, getDownloadURL } from "firebase/storage";
+import { storage } from "../firebase";
 
 /**
  * Prepares an attachment for Firestore.
@@ -27,6 +25,27 @@ export const prepareAttachmentForUpload = async (att: Attachment, userId: string
   }
 
   return att;
+};
+
+/**
+ * Uploads a model-generated image to Firebase Storage.
+ * Returns an Attachment with storageUrl (no base64 data).
+ */
+export const uploadGeneratedImage = async (
+  imageData: { mimeType: string; data: string },
+  userId: string,
+  chatId: string
+): Promise<Attachment> => {
+  const ext = imageData.mimeType.includes('png') ? 'png' : 'jpg';
+  const storageRef = ref(storage, `users/${userId}/chats/${chatId}/generated_${Date.now()}.${ext}`);
+  await uploadString(storageRef, imageData.data, 'base64', { contentType: imageData.mimeType });
+  const url = await getDownloadURL(storageRef);
+
+  return {
+    mimeType: imageData.mimeType,
+    name: `generated_image.${ext}`,
+    storageUrl: url,
+  };
 };
 
 /**

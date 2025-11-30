@@ -1,8 +1,8 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
+    // User uploads (attachments sent by user)
     match /users/{userId}/uploads/{allPaths=**} {
-      // Write: own folder + size + type restrictions
       allow write: if request.auth != null
                    && request.auth.uid == userId
                    && request.resource.size < 20 * 1024 * 1024
@@ -10,8 +10,15 @@ service firebase.storage {
                        request.resource.contentType == 'application/pdf' ||
                        request.resource.contentType == 'text/plain' ||
                        request.resource.contentType == 'text/csv');
+      allow read: if request.auth != null && request.auth.uid == userId;
+    }
 
-      // Read: only own files (Private)
+    // Chat generated images (from AI models)
+    match /users/{userId}/chats/{chatId}/{allPaths=**} {
+      allow write: if request.auth != null
+                   && request.auth.uid == userId
+                   && request.resource.size < 20 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
       allow read: if request.auth != null && request.auth.uid == userId;
     }
   }

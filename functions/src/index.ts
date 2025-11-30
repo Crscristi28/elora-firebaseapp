@@ -1,10 +1,39 @@
 import { onRequest } from "firebase-functions/v2/https";
 import { defineSecret } from "firebase-functions/params";
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Part, Content, ThinkingConfig, ThinkingLevel } from "@google/genai";
 import * as admin from "firebase-admin";
 import { SUGGESTION_PROMPT } from "./prompts/suggestion";
 
 admin.initializeApp();
+
+// --- Request Types ---
+interface ChatAttachment {
+    mimeType: string;
+    data: string;
+    name?: string;
+}
+
+interface HistoryMessage {
+    role: 'user' | 'model';
+    text: string;
+}
+
+interface ChatSettings {
+    userName?: string;
+    systemInstruction?: string;
+    temperature?: number;
+    topP?: number;
+    aspectRatio?: '1:1' | '16:9' | '9:16' | '4:3' | '3:4';
+    showSuggestions?: boolean;
+}
+
+interface ChatRequest {
+    history?: HistoryMessage[];
+    newMessage?: string;
+    attachments?: ChatAttachment[];
+    modelId?: 'gemini-2.5-flash' | 'gemini-3-pro-preview' | 'gemini-2.5-flash-lite' | 'gemini-2.5-flash-image';
+    settings?: ChatSettings;
+}
 
 // Define secret for Gemini API key
 const geminiApiKey = defineSecret("GEMINI_API_KEY");
@@ -46,7 +75,7 @@ export const streamChat = onRequest(
     }
 
     try {
-      const { history, newMessage, attachments, modelId, settings } = req.body;
+      const { history, newMessage, attachments, modelId, settings } = req.body as ChatRequest;
 
       if (!newMessage && (!attachments || attachments.length === 0)) {
         res.status(400).json({ error: "Either message text or attachments are required" });
@@ -63,10 +92,10 @@ export const streamChat = onRequest(
       const ai = getAI();
 
       // Prepare message parts
-      const parts: any[] = [];
+      const parts: Part[] = [];
 
       if (attachments && attachments.length > 0) {
-        attachments.forEach((att: any) => {
+        attachments.forEach((att: ChatAttachment) => {
           parts.push({
             inlineData: {
               mimeType: att.mimeType,
@@ -81,8 +110,8 @@ export const streamChat = onRequest(
       }
 
       // Convert history
-      const contents = [
-        ...(history || []).map((msg: any) => ({
+      const contents: Content[] = [
+        ...(history || []).map((msg: HistoryMessage) => ({
           role: msg.role,
           parts: [{ text: msg.text }],
         })),
@@ -123,29 +152,27 @@ export const streamChat = onRequest(
           }
         });
 
-        let generatedContent = "";
-
         if (response.candidates?.[0]?.content?.parts) {
           for (const part of response.candidates[0].content.parts) {
             if (part.inlineData) {
               const mimeType = part.inlineData.mimeType || 'image/png';
               const base64Data = part.inlineData.data.replace(/\r?\n|\r/g, '');
-              generatedContent += `\n![Generated Image](data:${mimeType};base64,${base64Data})\n`;
+              // Send as image event (same format as code execution graphs)
+              res.write(`data: ${JSON.stringify({
+                image: { mimeType, data: base64Data }
+              })}\n\n`);
+              if ((res as any).flush) (res as any).flush();
             } else if (part.text) {
-              generatedContent += part.text;
+              // Send any text as text event
+              res.write(`data: ${JSON.stringify({ text: part.text })}\n\n`);
+              if ((res as any).flush) (res as any).flush();
             }
           }
-        }
-
-        if (!generatedContent && response.text) {
-          generatedContent = response.text;
-        }
-
-        // Send as single SSE event
-        if (generatedContent) {
-          res.write(`data: ${JSON.stringify({ text: generatedContent })}\n\n`);
+        } else if (response.text) {
+          res.write(`data: ${JSON.stringify({ text: response.text })}\n\n`);
           if ((res as any).flush) (res as any).flush();
         }
+
         res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
         if ((res as any).flush) (res as any).flush();
         res.end();
@@ -157,20 +184,21 @@ export const streamChat = onRequest(
         const isPro = modelId === "gemini-3-pro-preview";
 
         // Configure Thinking based on model type
-        let thinkingConfig: any = undefined;
+        let thinkingConfig: ThinkingConfig | undefined = undefined;
 
         if (isThinkingCapable) {
             if (isPro) {
                 // Gemini 3 Pro: uses thinkingLevel
                 thinkingConfig = {
                     includeThoughts: true,
-                    thinkingLevel: "low"
+                    thinkingLevel: ThinkingLevel.LOW
                 };
             } else {
                 // Gemini 2.5 Flash: uses thinkingBudget
+                // Note: includeThoughts must be true when thinkingBudget > 0
                 thinkingConfig = {
-                    includeThoughts: true,
-                    thinkingBudget: -1  // dynamic
+                    includeThoughts: false,
+                    thinkingBudget: 0
                 };
             }
         }

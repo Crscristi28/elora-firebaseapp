@@ -15,11 +15,12 @@ export const streamChatResponse = async (
   attachments: Attachment[],
   modelId: ModelId,
   settings: PromptSettings,
-  appSettings: { showSuggestions: boolean; userName?: string }, // Updated type here
+  appSettings: { showSuggestions: boolean; userName?: string },
   onChunk: (text: string) => void,
   onSources?: (sources: Source[]) => void,
   onThinking?: (text: string) => void,
-  onSuggestions?: (suggestions: string[]) => void
+  onSuggestions?: (suggestions: string[]) => void,
+  onImage?: (image: { mimeType: string; data: string }) => Promise<void>
 ): Promise<string> => {
   
   // Construct System Instruction
@@ -101,11 +102,16 @@ export const streamChatResponse = async (
               onChunk(data.text);
             }
 
-            // Handle image event (instant display, not token-by-token)
+            // Handle image event - AWAIT the Storage upload!
             if (data.image) {
-              const imgMarkdown = `\n![Generated Image](data:${data.image.mimeType};base64,${data.image.data})\n`;
-              fullText += imgMarkdown;
-              onChunk(imgMarkdown);
+              console.log("GeminiService: RECEIVED IMAGE EVENT!", data.image.mimeType);
+              if (onImage) {
+                console.log("GeminiService: Calling onImage callback...");
+                await onImage(data.image);
+                console.log("GeminiService: onImage callback DONE");
+              } else {
+                console.log("GeminiService: NO onImage callback!");
+              }
             }
 
             if (data.sources && onSources) {
