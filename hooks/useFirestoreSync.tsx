@@ -46,18 +46,23 @@ export const useFirestoreSync = () => {
       });
       setSessions(sessionsData);
 
-      // If no session is active, or the active one was deleted, set a new one.
-      if (!currentSessionId && sessionsData.length > 0) {
-        setCurrentSessionId(sessionsData[0].id);
-      } else if (sessionsData.length === 0) {
-        setCurrentSessionId(null);
-      }
-
+      // We removed the auto-selection logic here so the app starts on the main screen (null).
+      
       setLoading(false);
     });
 
     return () => unsubscribe();
   }, [user?.uid]);
+
+  // Sync currentSessionId with sessions list (handle deletion)
+  useEffect(() => {
+    if (currentSessionId && sessions.length > 0) {
+      const exists = sessions.find(s => s.id === currentSessionId);
+      if (!exists) {
+        setCurrentSessionId(null);
+      }
+    }
+  }, [sessions, currentSessionId]);
 
   // Effect 2: Listen for changes to the MESSAGES of the CURRENTLY ACTIVE chat
   useEffect(() => {

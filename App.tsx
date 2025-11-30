@@ -107,7 +107,7 @@ const App: React.FC = () => {
 
   // --- FEATURE: Handle deleted session ---
   useEffect(() => {
-    if (!sessions.find(s => s.id === currentSessionId) && sessions.length > 0) {
+    if (currentSessionId && !sessions.find(s => s.id === currentSessionId) && sessions.length > 0) {
       setCurrentSessionId(sessions[0].id);
     }
   }, [sessions, currentSessionId, setCurrentSessionId]);
@@ -142,16 +142,12 @@ const App: React.FC = () => {
   };
 
   const createNewChat = async () => {
-      const newSession: Omit<ChatSession, 'messages'> = {
-          id: Date.now().toString(),
-          title: 'New Chat',
-          createdAt: Date.now(),
-          updatedAt: Date.now()
-      };
-      const newId = await createNewChatInDb(newSession);
-      if (newId) setCurrentSessionId(newId);
+      // Just reset current ID to null.
+      // The actual DB creation happens in handleSendMessage
+      setCurrentSessionId(null);
       setIsLoading(false);
       setReplyingTo(null);
+      if (window.innerWidth < 768) setIsSidebarOpen(false);
   };
 
   const handleEditMessage = async (messageId: string, newText: string) => {
@@ -181,6 +177,8 @@ const App: React.FC = () => {
 
     // Auto-create chat if none exists
     let sessionId = currentSessionId;
+    let isNewSession = false; // Flag to track if we just created this session
+
     if (!sessionId) {
       const newSession: Omit<ChatSession, 'messages'> = {
         id: Date.now().toString(),
@@ -192,14 +190,17 @@ const App: React.FC = () => {
       if (!newId) return;
       setCurrentSessionId(newId);
       sessionId = newId;
+      isNewSession = true; // Mark as new
     }
 
     let finalText = replyingTo ? `> ${replyingTo.text.split('\n').join('\n> ')}\n\n${text}` : text;
     setReplyingTo(null);
 
     // --- FEATURE: Auto-title from first message ---
+    // If it's a freshly created session OR existing session with empty messages (and title New Chat)
     const currentSession = sessions.find(s => s.id === sessionId);
-    const shouldUpdateTitle = messages.length === 0 && currentSession?.title === 'New Chat';
+    const shouldUpdateTitle = isNewSession || (messages.length === 0 && currentSession?.title === 'New Chat');
+    
     if (shouldUpdateTitle) {
       const newTitle = text.slice(0, 30) + (text.length > 30 ? '...' : '');
       await renameChatInDb(sessionId, newTitle);
@@ -304,7 +305,7 @@ const App: React.FC = () => {
           if (dbDebounceTimerRef.current) clearTimeout(dbDebounceTimerRef.current);
           
           dbDebounceTimerRef.current = setTimeout(() => {
-            updateMessageInDb(sessionId, newBotMessageId, { text: streamBufferRef.current });
+            updateMessageInDb(sessionId!, newBotMessageId, { text: streamBufferRef.current });
           }, 2000); 
         },
         (sources) => {
@@ -475,7 +476,7 @@ const App: React.FC = () => {
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
         sessions={sessions}
-        currentSessionId={currentSessionId!}
+        currentSessionId={currentSessionId}
         onSelectSession={setCurrentSessionId}
         onNewChat={createNewChat}
         onDeleteSession={(id, e) => { e.stopPropagation(); deleteChatInDb(id); }}

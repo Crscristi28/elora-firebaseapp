@@ -6,7 +6,7 @@ interface SidebarProps {
   isOpen: boolean;
   onClose: () => void;
   sessions: ChatSession[];
-  currentSessionId: string;
+  currentSessionId: string | null;
   onSelectSession: (id: string) => void;
   onNewChat: () => void;
   onDeleteSession: (id: string, e: React.MouseEvent) => void;
