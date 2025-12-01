@@ -281,12 +281,28 @@ export const streamChat = onRequest(
                      }
                      if ((part as any).codeExecutionResult) {
                          console.log(`[DEBUG] CODE RESULT:`, JSON.stringify((part as any).codeExecutionResult));
-                         // Send result to client
                          const output = (part as any).codeExecutionResult.output || '';
-                         const resultText = `\n**Output:**\n\`\`\`\n${output}\n\`\`\`\n`;
-                         fullResponseText += resultText;
-                         res.write(`data: ${JSON.stringify({ text: resultText })}\n\n`);
-                         if ((res as any).flush) (res as any).flush();
+
+                         // Check if output contains a base64 image (matplotlib/pillow output)
+                         const base64ImageRegex = /data:image\/(png|jpeg|jpg|gif|webp);base64,([A-Za-z0-9+/=]+)/;
+                         const imageMatch = output.match(base64ImageRegex);
+
+                         if (imageMatch) {
+                             // Found base64 image in output - send as image event
+                             const mimeType = `image/${imageMatch[1]}`;
+                             const base64Data = imageMatch[2];
+                             console.log(`[DEBUG] Found base64 image in code output: ${mimeType}`);
+                             res.write(`data: ${JSON.stringify({
+                                 image: { mimeType, data: base64Data }
+                             })}\n\n`);
+                             if ((res as any).flush) (res as any).flush();
+                         } else {
+                             // Regular text output
+                             const resultText = `\n**Output:**\n\`\`\`\n${output}\n\`\`\`\n`;
+                             fullResponseText += resultText;
+                             res.write(`data: ${JSON.stringify({ text: resultText })}\n\n`);
+                             if ((res as any).flush) (res as any).flush();
+                         }
                      }
 
                     // Handle inline images from code execution (matplotlib graphs, etc.)
