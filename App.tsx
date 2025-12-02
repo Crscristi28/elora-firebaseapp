@@ -27,6 +27,8 @@ const App: React.FC = () => {
     createNewChatInDb,
     deleteChatInDb,
     renameChatInDb,
+    fetchUserNameFromDb,
+    saveUserNameToDb,
   } = useFirestoreSync();
 
   const [isLoading, setIsLoading] = useState(false);
@@ -55,13 +57,19 @@ const App: React.FC = () => {
 
   const inputAreaRef = useRef<HTMLDivElement>(null);
 
-  // Helper to detect language
+  // Helper to detect system language
   const getSystemLanguage = (): string => {
       if (typeof navigator !== 'undefined') {
           const lang = navigator.language.split('-')[0];
-          return lang === 'cs' ? 'cs' : 'en';
+          const supportedLanguages = ['en', 'cs', 'ro', 'de', 'it', 'ru'];
+          return supportedLanguages.includes(lang) ? lang : 'en';
       }
       return 'en';
+  };
+
+  // Resolve language - if 'system', detect from browser, otherwise use saved value
+  const resolveLanguage = (lang: string): string => {
+      return lang === 'system' ? getSystemLanguage() : lang;
   };
 
   // --- SETTINGS (Stays Local) ---
@@ -71,29 +79,29 @@ const App: React.FC = () => {
         if (saved) {
             return JSON.parse(saved);
         }
-        // Default with detection
-        return { 
-            theme: 'system', 
-            enterToSend: true, 
-            defaultVoiceURI: '', 
-            defaultSpeechRate: 1.0, 
-            language: getSystemLanguage(), 
-            showSuggestions: true 
+        // Default with system language detection
+        return {
+            theme: 'system',
+            enterToSend: true,
+            defaultVoiceURI: '',
+            defaultSpeechRate: 1.0,
+            language: 'system',
+            showSuggestions: true
         };
-    } catch { 
-        return { 
-            theme: 'system', 
-            enterToSend: true, 
-            defaultVoiceURI: '', 
-            defaultSpeechRate: 1.0, 
-            language: getSystemLanguage(), 
-            showSuggestions: true 
+    } catch {
+        return {
+            theme: 'system',
+            enterToSend: true,
+            defaultVoiceURI: '',
+            defaultSpeechRate: 1.0,
+            language: 'system',
+            showSuggestions: true
         }; 
     }
   });
 
   const t = (key: TranslationKey) => {
-      const lang = (appSettings.language as Language) || 'en';
+      const lang = resolveLanguage(appSettings.language) as Language;
       return translations[lang]?.[key] || translations['en'][key];
   };
 
@@ -107,14 +115,55 @@ const App: React.FC = () => {
     }
   };
 
-  // Ensure default userName is set if user logs in
+  // Cloud sync state - don't save until we've fetched from cloud first
+  const hasCheckedCloudRef = useRef(false);
+  const lastCloudValueRef = useRef<string | null>(null);
+  const userNameSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Fetch userName from Firestore on every app load - cloud is ALWAYS source of truth
   useEffect(() => {
-      // Only set default if userName is strictly undefined (never set before)
-      // This allows the user to set it to "" (empty string) without it bouncing back
-      if (user?.displayName && appSettings.userName === undefined) {
-          setAppSettings(prev => ({ ...prev, userName: user.displayName!.split(' ')[0] }));
+      if (!user?.uid) {
+          hasCheckedCloudRef.current = false;
+          return;
       }
-  }, [user, appSettings.userName]);
+
+      fetchUserNameFromDb().then(cloudName => {
+          hasCheckedCloudRef.current = true;
+          lastCloudValueRef.current = cloudName; // Track what cloud had
+
+          if (cloudName) {
+              // Cloud has a value - ALWAYS use it, ignore localStorage
+              setAppSettings(prev => ({ ...prev, userName: cloudName }));
+          } else {
+              // Cloud is empty - this is first time setup
+              // Use Google name as default and save to cloud
+              const defaultName = user.displayName?.split(' ')[0] || 'User';
+              setAppSettings(prev => ({ ...prev, userName: defaultName }));
+              saveUserNameToDb(defaultName);
+              lastCloudValueRef.current = defaultName; // We just saved this
+          }
+      });
+  }, [user?.uid]);
+
+  // Save userName to Firestore when user changes it in settings
+  useEffect(() => {
+      // Don't save until we've checked cloud first (prevents overwriting with stale localStorage)
+      if (!hasCheckedCloudRef.current) return;
+      if (!user?.uid || appSettings.userName === undefined) return;
+      // Skip if value is same as what we fetched from cloud (prevents redundant writes)
+      if (appSettings.userName === lastCloudValueRef.current) return;
+
+      // Debounce: wait 500ms after last change before saving
+      if (userNameSaveTimerRef.current) clearTimeout(userNameSaveTimerRef.current);
+      userNameSaveTimerRef.current = setTimeout(() => {
+          saveUserNameToDb(appSettings.userName!);
+          lastCloudValueRef.current = appSettings.userName!; // Update ref after save
+      }, 500);
+
+      return () => {
+          if (userNameSaveTimerRef.current) clearTimeout(userNameSaveTimerRef.current);
+      };
+  }, [appSettings.userName, user?.uid]);
 
   // --- PROMPT SETTINGS (Global/Session State) ---
   const [promptSettings, setPromptSettings] = useState<PromptSettings>({
@@ -531,7 +580,7 @@ const App: React.FC = () => {
         onNewChat={createNewChat}
         onDeleteSession={(id, e) => { e.stopPropagation(); deleteChatInDb(id); }}
         onRenameSession={renameChatInDb}
-        language={appSettings.language} // Added prop
+        language={resolveLanguage(appSettings.language)} // Added prop
       />
       <div className="flex-1 flex flex-col h-full relative min-w-0 bg-white dark:bg-[#0e0e10]">
           {/* FLOATING ISLAND HEADER */}
@@ -586,19 +635,19 @@ const App: React.FC = () => {
               onSuggestionClick={handleSuggestionClick}
               minFooterHeight={minFooterHeight}
               user={userWithPreferredName} // Pass the customized user object
-              language={appSettings.language} // Added prop
+              language={resolveLanguage(appSettings.language)} // Added prop
             />
             <div ref={inputAreaRef}>
-              <InputArea 
-                onSend={handleSendMessage} 
-                isLoading={isLoading} 
-                selectedModel={selectedModel} 
-                replyingTo={replyingTo} 
-                onClearReply={handleClearReply} 
-                initialText={suggestionText} 
+              <InputArea
+                onSend={handleSendMessage}
+                isLoading={isLoading}
+                selectedModel={selectedModel}
+                replyingTo={replyingTo}
+                onClearReply={handleClearReply}
+                initialText={suggestionText}
                 onClearInitialText={handleClearSuggestion}
                 settings={promptSettings} // PASSING GLOBAL SETTINGS
-                language={appSettings.language} // Added prop
+                language={resolveLanguage(appSettings.language)} // Added prop
               />
             </div>
           </div>

@@ -274,8 +274,8 @@ export const streamChat = onRequest(
                 // Gemini 2.5 Flash: uses thinkingBudget
                 // Note: includeThoughts must be true when thinkingBudget > 0
                 thinkingConfig = {
-                    includeThoughts: false,
-                    thinkingBudget: 0
+                    includeThoughts: true,
+                    thinkingBudget: 1024
                 };
             }
         }
@@ -430,7 +430,7 @@ export const streamChat = onRequest(
         console.log(`[Suggestions] Enabled: ${suggestionsEnabled}, Length: ${fullResponseText.trim().length}`);
         
         // Only generate if enabled AND text exists and not too short
-        if (suggestionsEnabled && fullResponseText.trim().length > 10) {
+        if (suggestionsEnabled && fullResponseText.trim().length > 150) {
             try {
                 console.log("[Suggestions] Generating...");
                 const suggestionResp: any = await ai.models.generateContent({

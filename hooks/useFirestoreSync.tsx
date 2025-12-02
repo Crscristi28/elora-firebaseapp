@@ -8,6 +8,7 @@ import {
   setDoc,
   addDoc,
   deleteDoc,
+  getDoc,
   Timestamp,
 } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -142,6 +143,32 @@ export const useFirestoreSync = () => {
       );
   };
 
+  // --- Settings Sync Functions (Non-blocking) ---
+
+  const fetchUserNameFromDb = async (): Promise<string | null> => {
+    if (!user?.uid) return null;
+    try {
+      const docSnap = await getDoc(doc(db, `users/${user.uid}/settings`, 'app'));
+      if (docSnap.exists()) {
+        return docSnap.data()?.userName || null;
+      }
+      return null;
+    } catch (e) {
+      console.error('Failed to fetch userName from Firestore:', e);
+      return null;
+    }
+  };
+
+  const saveUserNameToDb = (userName: string) => {
+    if (!user?.uid) return;
+    // Fire-and-forget - NO await, NO blocking
+    setDoc(
+      doc(db, `users/${user.uid}/settings`, 'app'),
+      { userName },
+      { merge: true }
+    ).catch(e => console.error('Failed to save userName to Firestore:', e));
+  };
+
   return {
     sessions,
     messages,
@@ -153,5 +180,7 @@ export const useFirestoreSync = () => {
     createNewChatInDb,
     deleteChatInDb,
     renameChatInDb,
+    fetchUserNameFromDb,
+    saveUserNameToDb,
   };
 };

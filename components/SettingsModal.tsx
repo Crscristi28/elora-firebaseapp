@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  X, Moon, Sun, Monitor, Keyboard, Mic, Database, Globe, Info, 
-  Trash2, Download, Check, User, Sparkles, MessageSquare, LogOut, 
-  Sliders, Activity, ChevronRight, ArrowLeft 
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  X, Moon, Sun, Monitor, Keyboard, Mic, Database, Globe, Info,
+  Trash2, Download, Check, User, Sparkles, MessageSquare, LogOut,
+  Sliders, Activity, ChevronRight, ArrowLeft
 } from 'lucide-react';
 import { AppSettings, ChatSession, UserProfile, PromptSettings, ToneStyle } from '../types';
 import { translations, Language, TranslationKey } from '../translations';
@@ -139,40 +139,65 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
     </h3>
   );
 
-  const SettingRow = ({ 
-    icon: Icon, 
-    label, 
-    children, 
+  const SettingRow = ({
+    icon: Icon,
+    label,
+    children,
     danger = false,
     info
-  }: { 
-    icon?: any, 
-    label: string, 
-    children: React.ReactNode, 
+  }: {
+    icon?: any,
+    label: string,
+    children: React.ReactNode,
     danger?: boolean,
     info?: string
   }) => {
     const [showInfo, setShowInfo] = useState(false);
+    const buttonRef = useRef<HTMLButtonElement>(null);
+    const [tooltipPos, setTooltipPos] = useState<{top: number, left: number} | null>(null);
+
+    const handleInfoClick = (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (showInfo) {
+        setShowInfo(false);
+        setTooltipPos(null);
+      } else if (buttonRef.current) {
+        const rect = buttonRef.current.getBoundingClientRect();
+        setTooltipPos({
+          top: rect.top - 10,
+          left: rect.left + (rect.width / 2)
+        });
+        setShowInfo(true);
+      }
+    };
 
     return (
       <div className="bg-white dark:bg-[#1e1f20] p-4 flex items-center justify-between border-b border-gray-100 dark:border-gray-800 last:border-0 min-h-[60px]">
-        <div className="flex items-center gap-3 overflow-hidden flex-1 min-w-0 pr-4">
+        <div className="flex items-center gap-3 flex-1 min-w-0 pr-4">
           {Icon && <Icon size={18} className={`shrink-0 ${danger ? 'text-red-500' : 'text-gray-400'}`} />}
           <span className={`text-sm font-medium truncate ${danger ? 'text-red-600' : 'text-gray-900 dark:text-gray-200'}`}>
             {label}
           </span>
           {info && (
             <div className="relative shrink-0">
-              <button 
-                onClick={(e) => { e.stopPropagation(); setShowInfo(!showInfo); }}
+              <button
+                ref={buttonRef}
+                onClick={handleInfoClick}
                 className="text-gray-400 hover:text-blue-500 transition-colors p-1"
               >
                 <Info size={14} />
               </button>
-              {showInfo && (
+              {showInfo && tooltipPos && (
                 <>
-                  <div className="fixed inset-0 z-[70]" onClick={(e) => { e.stopPropagation(); setShowInfo(false); }} />
-                  <div className="absolute left-1/2 bottom-full mb-2 -translate-x-1/2 w-48 p-3 bg-gray-900 text-white text-xs rounded-xl shadow-xl z-[71] text-center leading-relaxed animate-fade-in cursor-default">
+                  <div className="fixed inset-0 z-[100]" onClick={(e) => { e.stopPropagation(); setShowInfo(false); setTooltipPos(null); }} />
+                  <div
+                    className="fixed z-[101] w-48 p-3 bg-gray-900 text-white text-xs rounded-xl shadow-xl text-center leading-relaxed animate-fade-in cursor-default pointer-events-none"
+                    style={{
+                      top: tooltipPos.top,
+                      left: tooltipPos.left,
+                      transform: 'translate(-50%, -100%)'
+                    }}
+                  >
                     {info}
                     <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900" />
                   </div>
@@ -414,11 +439,12 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
 
                             <SettingRow label={t('language')} icon={Globe}>
                                 <div className="relative">
-                                    <select 
+                                    <select
                                         value={settings.language}
                                         onChange={(e) => onUpdateSettings({...settings, language: e.target.value as Language})}
                                         className="bg-transparent text-sm font-medium text-blue-600 dark:text-blue-400 outline-none text-right appearance-none pr-6 cursor-pointer"
                                     >
+                                        <option value="system">{t('optSystemDefault')}</option>
                                         <option value="en">English</option>
                                         <option value="cs">Čeština</option>
                                         <option value="ro">Română</option>
