@@ -5,6 +5,7 @@ export enum Role {
 }
 
 export enum ModelId {
+  AUTO = 'auto', // The Smart Router
   LITE = 'gemini-2.5-flash-lite', // The Router/Suggester
   FLASH = 'gemini-2.5-flash', // The Standard Chat
   PRO = 'gemini-3-pro-preview', // The Brain
@@ -62,6 +63,12 @@ export interface ModelConfig {
 }
 
 export const MODELS: ModelConfig[] = [
+  {
+    id: ModelId.AUTO,
+    name: 'Elora Auto',
+    description: 'Smartly selects the best model for you',
+    icon: 'Sparkles',
+  },
   {
     id: ModelId.FLASH,
     name: 'Elora Flash',

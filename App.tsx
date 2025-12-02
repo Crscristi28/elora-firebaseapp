@@ -6,11 +6,12 @@ import Sidebar from './components/Sidebar';
 import SettingsModal from './components/SettingsModal';
 import { streamChatResponse } from './services/geminiService';
 import { uploadGeneratedImage } from './services/transformService';
-import { ChevronDown, Zap, Brain, Menu, Image as ImageIcon, Check } from 'lucide-react';
+import { ChevronDown, Zap, Brain, Menu, Image as ImageIcon, Check, Sparkles } from 'lucide-react';
 import { useAuth } from './hooks/useAuth';
 import { useFirestoreSync } from './hooks/useFirestoreSync';
 import { signInWithPopup, signOut } from 'firebase/auth';
 import { auth, googleProvider } from './firebase';
+import { translations, Language, TranslationKey } from './translations';
 
 const App: React.FC = () => {
   const { user, loading: authLoading } = useAuth();
@@ -54,13 +55,57 @@ const App: React.FC = () => {
 
   const inputAreaRef = useRef<HTMLDivElement>(null);
 
+  // Helper to detect language
+  const getSystemLanguage = (): string => {
+      if (typeof navigator !== 'undefined') {
+          const lang = navigator.language.split('-')[0];
+          return lang === 'cs' ? 'cs' : 'en';
+      }
+      return 'en';
+  };
+
   // --- SETTINGS (Stays Local) ---
   const [appSettings, setAppSettings] = useState<AppSettings>(() => {
     try {
         const saved = localStorage.getItem('elora_settings_v1');
-        return saved ? JSON.parse(saved) : { theme: 'system', enterToSend: true, defaultVoiceURI: '', defaultSpeechRate: 1.0, language: 'en', showSuggestions: true };
-    } catch { return { theme: 'system', enterToSend: true, defaultVoiceURI: '', defaultSpeechRate: 1.0, language: 'en', showSuggestions: true }; }
+        if (saved) {
+            return JSON.parse(saved);
+        }
+        // Default with detection
+        return { 
+            theme: 'system', 
+            enterToSend: true, 
+            defaultVoiceURI: '', 
+            defaultSpeechRate: 1.0, 
+            language: getSystemLanguage(), 
+            showSuggestions: true 
+        };
+    } catch { 
+        return { 
+            theme: 'system', 
+            enterToSend: true, 
+            defaultVoiceURI: '', 
+            defaultSpeechRate: 1.0, 
+            language: getSystemLanguage(), 
+            showSuggestions: true 
+        }; 
+    }
   });
+
+  const t = (key: TranslationKey) => {
+      const lang = (appSettings.language as Language) || 'en';
+      return translations[lang]?.[key] || translations['en'][key];
+  };
+
+  const getModelName = (id: ModelId) => {
+    switch (id) {
+        case ModelId.AUTO: return t('modelAuto');
+        case ModelId.FLASH: return t('modelFlash');
+        case ModelId.PRO: return t('modelPro');
+        case ModelId.IMAGE_GEN: return t('modelImagine');
+        default: return id;
+    }
+  };
 
   // Ensure default userName is set if user logs in
   useEffect(() => {
@@ -385,6 +430,7 @@ const App: React.FC = () => {
   const getModelColorClass = (id: ModelId) => {
     const model = MODELS.find(m => m.id === id);
     switch (model?.icon) {
+      case 'Sparkles': return 'bg-yellow-100 dark:bg-yellow-500/20 text-yellow-600 dark:text-yellow-400';
       case 'Zap': return 'bg-blue-100 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400';
       case 'Brain': return 'bg-purple-100 dark:bg-purple-500/20 text-purple-600 dark:text-purple-400';
       case 'Image': return 'bg-pink-100 dark:bg-pink-500/20 text-pink-600 dark:text-pink-400';
@@ -395,6 +441,7 @@ const App: React.FC = () => {
   const getModelIcon = (id: ModelId) => {
     const model = MODELS.find(m => m.id === id);
     switch (model?.icon) {
+      case 'Sparkles': return <Sparkles size={20} />;
       case 'Zap': return <Zap size={20} />;
       case 'Brain': return <Brain size={20} />;
       case 'Image': return <ImageIcon size={20} />;
@@ -405,6 +452,7 @@ const App: React.FC = () => {
   const getModelIconSmall = (id: ModelId) => {
     const model = MODELS.find(m => m.id === id);
     switch (model?.icon) {
+      case 'Sparkles': return <Sparkles size={16} className="text-white" />;
       case 'Zap': return <Zap size={16} className="text-white" />;
       case 'Brain': return <Brain size={16} className="text-white" />;
       case 'Image': return <ImageIcon size={16} className="text-white" />;
@@ -439,7 +487,7 @@ const App: React.FC = () => {
 
   // --- RENDER LOGIC ---
   if (authLoading || (user && sessionsLoading)) {
-      return <div className="fixed inset-0 flex items-center justify-center bg-white dark:bg-[#0e0e10] text-gray-500">Loading...</div>;
+      return <div className="fixed inset-0 flex items-center justify-center bg-white dark:bg-[#0e0e10] text-gray-500">{t('loading')}</div>;
   }
 
   if (!user) {
@@ -448,11 +496,11 @@ const App: React.FC = () => {
            <div className="w-24 h-24 bg-gradient-to-br from-blue-500 to-teal-400 rounded-3xl flex items-center justify-center mb-8 shadow-2xl shadow-blue-500/20 animate-fade-in">
               <span className="text-5xl font-bold text-white">E</span>
            </div>
-           <h1 className="text-3xl font-bold mb-2 text-center">Welcome to Elora</h1>
-           <p className="text-gray-500 dark:text-gray-400 mb-8 text-center">A modern AI experience. Sign in to continue.</p>
+           <h1 className="text-3xl font-bold mb-2 text-center">{t('welcomeTitle')}</h1>
+           <p className="text-gray-500 dark:text-gray-400 mb-8 text-center">{t('welcomeSubtitle')}</p>
            <button onClick={handleLogin} className="flex items-center gap-3 px-6 py-3 bg-white dark:bg-[#2d2e33] border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm hover:bg-gray-50 dark:hover:bg-[#3d3e44] transition-all active:scale-95">
              <svg className="w-5 h-5" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" /><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" /><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" /><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" /></svg>
-             <span className="font-medium">Sign in with Google</span>
+             <span className="font-medium">{t('signInGoogle')}</span>
            </button>
         </div>
       );
@@ -481,6 +529,7 @@ const App: React.FC = () => {
         onNewChat={createNewChat}
         onDeleteSession={(id, e) => { e.stopPropagation(); deleteChatInDb(id); }}
         onRenameSession={renameChatInDb}
+        language={appSettings.language} // Added prop
       />
       <div className="flex-1 flex flex-col h-full relative min-w-0 bg-white dark:bg-[#0e0e10]">
           {/* FLOATING ISLAND HEADER */}
@@ -490,7 +539,7 @@ const App: React.FC = () => {
               </div>
               <div className="relative pointer-events-auto mt-2">
                   <button onClick={() => setIsModelMenuOpen(!isModelMenuOpen)} className={`flex items-center gap-2 px-4 py-2 rounded-[24px] backdrop-blur-xl shadow-lg border transition-all active:scale-95 duration-300 ${isModelMenuOpen ? 'bg-black/80 dark:bg-[#1e1f20]/90 border-gray-200 dark:border-gray-700 w-64 justify-between' : 'bg-black/50 dark:bg-white/10 border-transparent hover:bg-black/70 text-white w-auto'}`}>
-                      {isModelMenuOpen ? <span className="text-sm font-bold text-white pl-1">Select Model</span> : <div className="flex items-center gap-2">{getModelIconSmall(activeModelConfig.id)}<span className="text-xs font-medium tracking-wide text-white">{activeModelConfig.name}</span></div>}
+                      {isModelMenuOpen ? <span className="text-sm font-bold text-white pl-1">{t('selectModel')}</span> : <div className="flex items-center gap-2">{getModelIconSmall(activeModelConfig.id)}<span className="text-xs font-medium tracking-wide text-white">{getModelName(activeModelConfig.id)}</span></div>}
                       {isModelMenuOpen ? <ChevronDown size={16} className="rotate-180 text-gray-400" /> : null}
                   </button>
                   {isModelMenuOpen && (
@@ -507,7 +556,7 @@ const App: React.FC = () => {
                             {getModelIcon(model.id)}
                           </div>
                           <div className="flex-1">
-                            <div className="font-medium text-sm text-gray-900 dark:text-gray-200">{model.name}</div>
+                            <div className="font-medium text-sm text-gray-900 dark:text-gray-200">{getModelName(model.id)}</div>
                             <div className="text-xs text-gray-500">{model.description}</div>
                           </div>
                           {selectedModel === model.id && <Check size={16} className="text-blue-500" />}
@@ -535,6 +584,7 @@ const App: React.FC = () => {
               onSuggestionClick={handleSuggestionClick}
               minFooterHeight={minFooterHeight}
               user={userWithPreferredName} // Pass the customized user object
+              language={appSettings.language} // Added prop
             />
             <div ref={inputAreaRef}>
               <InputArea 
@@ -546,6 +596,7 @@ const App: React.FC = () => {
                 initialText={suggestionText} 
                 onClearInitialText={handleClearSuggestion}
                 settings={promptSettings} // PASSING GLOBAL SETTINGS
+                language={appSettings.language} // Added prop
               />
             </div>
           </div>

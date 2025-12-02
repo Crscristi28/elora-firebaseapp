@@ -5,6 +5,7 @@ import { fileToBase64 } from '../services/geminiService';
 import { useAuth } from '../hooks/useAuth';
 import { storage } from '../firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { translations, Language } from '../translations';
 
 // MIME type to file extension mapping
 const MIME_TO_EXT: Record<string, string> = {
@@ -83,9 +84,10 @@ interface InputAreaProps {
   initialText?: string; // New prop to populate text
   onClearInitialText?: () => void; // Callback to clear prop after setting
   settings: PromptSettings; // NOW REQUIRED: Passed from parent (App.tsx)
+  language: string;
 }
 
-const InputArea: React.FC<InputAreaProps> = ({ onSend, isLoading, selectedModel, replyingTo, onClearReply, initialText, onClearInitialText, settings }) => {
+const InputArea: React.FC<InputAreaProps> = ({ onSend, isLoading, selectedModel, replyingTo, onClearReply, initialText, onClearInitialText, settings, language }) => {
   const { user } = useAuth();
   const [input, setInput] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -99,6 +101,11 @@ const InputArea: React.FC<InputAreaProps> = ({ onSend, isLoading, selectedModel,
   const baseInputRef = useRef('');
 
   const isImageGen = selectedModel === ModelId.IMAGE_GEN;
+
+  const t = (key: keyof typeof translations['en']) => {
+      const lang = (language as Language) || 'en';
+      return translations[lang]?.[key] || translations['en'][key];
+  };
 
   useEffect(() => {
     return () => {
@@ -391,7 +398,7 @@ const InputArea: React.FC<InputAreaProps> = ({ onSend, isLoading, selectedModel,
            <div className="p-4 rounded-full bg-blue-500/10 mb-2 animate-bounce shadow-lg shadow-blue-500/20">
              <Upload size={32} />
            </div>
-           <span className="font-semibold text-lg tracking-wide">Drop files to attach</span>
+           <span className="font-semibold text-lg tracking-wide">{t('dragDrop')}</span>
         </div>
       )}
       
@@ -483,7 +490,7 @@ const InputArea: React.FC<InputAreaProps> = ({ onSend, isLoading, selectedModel,
             value={input}
             onChange={handleInput}
             onKeyDown={handleKeyDown}
-            placeholder={isImageGen ? "Describe the image you want to generate..." : "Message Elora..."}
+            placeholder={isImageGen ? t('imagePlaceholder') : t('placeholder')}
             className={`flex-1 bg-transparent text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none resize-none overflow-y-auto leading-6 text-[16px] py-1 ${isListening ? 'animate-pulse placeholder-blue-500 dark:placeholder-blue-400' : ''}`}
             rows={1}
             style={{ height: '24px', maxHeight: '120px' }}
@@ -521,7 +528,7 @@ const InputArea: React.FC<InputAreaProps> = ({ onSend, isLoading, selectedModel,
       </div>
       
       <div className="text-center mt-3 text-[10px] text-gray-500 dark:text-gray-600 font-medium tracking-wide">
-        Elora can make mistakes, so double-check important information.
+        {t('footerDisclaimer')}
       </div>
     </div>
   );

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Moon, Sun, Monitor, Keyboard, Mic, Database, Globe, Info, Trash2, Download, Check, User, Sparkles, MessageSquare, LogOut, Sliders, Activity } from 'lucide-react';
 import { AppSettings, ChatSession, UserProfile, PromptSettings, ToneStyle, TONE_PROMPTS } from '../types';
+import { translations, Language, TranslationKey } from '../translations';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -39,6 +40,47 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
     loadVoices();
     window.speechSynthesis.onvoiceschanged = loadVoices;
   }, []);
+
+  const t = (key: TranslationKey) => {
+    const lang = (settings.language as Language) || 'en';
+    return translations[lang]?.[key] || translations['en'][key];
+  };
+
+  // Helper to get translated tab name
+  const getTabLabel = (tab: SettingsTab) => {
+      switch (tab) {
+          case 'account': return t('tabAccount');
+          case 'personality': return t('tabPersonality');
+          case 'preferences': return t('tabPreferences');
+          case 'voice': return t('tabVoice');
+          case 'data': return t('tabData');
+          case 'about': return t('tabAbout');
+          default: return tab;
+      }
+  };
+
+  // Helper to get translated tone name
+  const getToneLabel = (tone: ToneStyle) => {
+      switch (tone) {
+          case 'normal': return t('styleNormal');
+          case 'concise': return t('styleConcise');
+          case 'explanatory': return t('styleExplanatory');
+          case 'formal': return t('styleFormal');
+          case 'learning': return t('styleLearning');
+          default: return tone;
+      }
+  };
+
+  const getToneDesc = (tone: ToneStyle) => {
+      switch (tone) {
+          case 'normal': return t('descNormal');
+          case 'concise': return t('descConcise');
+          case 'explanatory': return t('descExplanatory');
+          case 'formal': return t('descFormal');
+          case 'learning': return t('descLearning');
+          default: return '';
+      }
+  };
 
   const handleExportData = () => {
     const dataStr = JSON.stringify(sessions, null, 2);
@@ -88,12 +130,12 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
           )}
 
           {[
-            { id: 'account', label: 'Account', icon: User },
-            { id: 'personality', label: 'AI Personality', icon: Sparkles },
-            { id: 'preferences', label: 'Preferences', icon: Sliders },
-            { id: 'voice', label: 'Voice & Audio', icon: Mic },
-            { id: 'data', label: 'Data & Privacy', icon: Database },
-            { id: 'about', label: 'About', icon: Info },
+            { id: 'account', label: t('tabAccount'), icon: User },
+            { id: 'personality', label: t('tabPersonality'), icon: Sparkles },
+            { id: 'preferences', label: t('tabPreferences'), icon: Sliders },
+            { id: 'voice', label: t('tabVoice'), icon: Mic },
+            { id: 'data', label: t('tabData'), icon: Database },
+            { id: 'about', label: t('tabAbout'), icon: Info },
           ].map((item) => (
             <button
               key={item.id}
@@ -114,7 +156,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
         <div className="flex-1 flex flex-col min-h-0 bg-white dark:bg-[#1e1f20] relative">
           <div className="p-4 md:p-6 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center">
             <h2 className="text-xl font-bold text-gray-900 dark:text-white capitalize tracking-tight">
-                {activeTab === 'personality' ? 'AI Personality & Model' : activeTab}
+                {activeTab === 'personality' ? t('headerPersonality') : getTabLabel(activeTab)}
             </h2>
             <button onClick={onClose} className="text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 p-2 rounded-full transition-colors">
               <X size={20} />
@@ -136,18 +178,18 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                             <h3 className="text-2xl font-bold text-gray-900 dark:text-white">{user.displayName}</h3>
                             <p className="text-gray-500">{user.email}</p>
                             <div className="mt-3 inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-sm">
-                                PRO PLAN
+                                {t('proPlan')}
                             </div>
                         </div>
                     </div>
 
                     <div className="space-y-4">
-                        <h3 className="text-sm font-medium text-gray-900 dark:text-gray-200 px-1">Personalization</h3>
+                        <h3 className="text-sm font-medium text-gray-900 dark:text-gray-200 px-1">{t('headerPersonalization')}</h3>
                         
                         {/* Preferred Name Input */}
                         <div>
                             <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2 block">
-                                What should Elora call you?
+                                {t('labelNameInput')}
                             </label>
                             <input 
                                 type="text"
@@ -157,7 +199,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                                 className="w-full bg-gray-50 dark:bg-[#2d2e33] border border-gray-200 dark:border-gray-700 rounded-2xl px-5 py-4 text-sm text-gray-900 dark:text-white focus:outline-none focus:border-blue-500 transition-colors"
                             />
                             <p className="text-xs text-gray-500 mt-2 px-1">
-                                The AI will use this name to address you.
+                                {t('descNameInput')}
                             </p>
                         </div>
                     </div>
@@ -165,7 +207,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                     <div className="h-px bg-gray-100 dark:bg-gray-800" />
 
                     <div className="space-y-3">
-                        <h3 className="text-sm font-medium text-gray-900 dark:text-gray-200 px-1">Account Actions</h3>
+                        <h3 className="text-sm font-medium text-gray-900 dark:text-gray-200 px-1">{t('headerAccountActions')}</h3>
                         <button 
                             onClick={onSignOut}
                             className="w-full flex items-center justify-between px-5 py-4 bg-red-50 dark:bg-red-500/5 hover:bg-red-100 dark:hover:bg-red-500/10 text-red-600 dark:text-red-400 rounded-2xl border border-red-100 dark:border-red-500/20 transition-all font-medium group"
@@ -174,9 +216,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                                 <div className="p-2 bg-red-200/50 dark:bg-red-500/20 rounded-lg group-hover:scale-110 transition-transform">
                                     <LogOut size={18} />
                                 </div>
-                                <span>Sign Out</span>
+                                <span>{t('signOut')}</span>
                             </div>
-                            <span className="text-xs opacity-60">Ends current session</span>
+                            <span className="text-xs opacity-60">{t('hintSessionEnd')}</span>
                         </button>
                     </div>
                 </div>
@@ -188,8 +230,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                     {/* Tone Selector */}
                     <div className="space-y-4">
                         <div className="flex items-center justify-between">
-                            <label className="text-sm font-bold text-gray-900 dark:text-gray-100">Response Tone</label>
-                            <span className="text-xs text-gray-500 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded-lg capitalize">{promptSettings.style}</span>
+                            <label className="text-sm font-bold text-gray-900 dark:text-gray-100">{t('labelTone')}</label>
+                            <span className="text-xs text-gray-500 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded-lg capitalize">{getToneLabel(promptSettings.style)}</span>
                         </div>
                         <div className="grid grid-cols-2 gap-3">
                             {(['normal', 'concise', 'explanatory', 'formal', 'learning'] as ToneStyle[]).map((tone) => (
@@ -202,12 +244,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                                             : 'bg-white dark:bg-[#252629] border-transparent text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-[#2d2e33]'
                                     }`}
                                 >
-                                    <span className="block mb-0.5">{tone}</span>
+                                    <span className="block mb-0.5">{getToneLabel(tone)}</span>
                                     <span className="text-[10px] opacity-60 font-normal normal-case block">
-                                        {tone === 'normal' ? 'Balanced & natural' : 
-                                         tone === 'concise' ? 'Short & direct' : 
-                                         tone === 'learning' ? 'Simple & educational' : 
-                                         tone === 'formal' ? 'Professional & strict' : 'Detailed deep-dive'}
+                                        {getToneDesc(tone)}
                                     </span>
                                     {promptSettings.style === tone && (
                                         <div className="absolute top-3 right-3 text-purple-500">
@@ -224,7 +263,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                     {/* Creativity Slider */}
                     <div className="space-y-4">
                         <div className="flex justify-between items-center">
-                            <label className="text-sm font-bold text-gray-900 dark:text-gray-100">Creativity Level</label>
+                            <label className="text-sm font-bold text-gray-900 dark:text-gray-100">{t('labelCreativity')}</label>
                             <span className="text-xs font-mono bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-2 py-1 rounded-lg">
                                 Temp: {promptSettings.temperature}
                             </span>
@@ -240,9 +279,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                                 className="w-full h-3 bg-gray-200 dark:bg-gray-700 rounded-full appearance-none cursor-pointer accent-blue-500"
                             />
                             <div className="flex justify-between text-[10px] text-gray-400 uppercase font-bold tracking-wider mt-2">
-                                <span>Precise (0.0)</span>
-                                <span>Balanced (0.5)</span>
-                                <span>Creative (1.0)</span>
+                                <span>{t('tempPrecise')} (0.0)</span>
+                                <span>{t('tempBalanced')} (0.5)</span>
+                                <span>{t('tempCreative')} (1.0)</span>
                             </div>
                         </div>
                     </div>
@@ -251,14 +290,14 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
 
                     {/* System Instructions */}
                     <div className="space-y-3">
-                        <label className="text-sm font-bold text-gray-900 dark:text-gray-100">Custom Instructions</label>
+                        <label className="text-sm font-bold text-gray-900 dark:text-gray-100">{t('labelInstructions')}</label>
                         <textarea
                             value={promptSettings.systemInstruction || ''}
                             onChange={(e) => onUpdatePromptSettings({ ...promptSettings, systemInstruction: e.target.value })}
-                            placeholder="e.g., You are a Python expert. Always explain code with comments..."
+                            placeholder={t('placeholderInstructions')}
                             className="w-full h-32 bg-gray-50 dark:bg-[#252629] border border-gray-200 dark:border-gray-700 rounded-2xl p-4 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 resize-none"
                         />
-                        <p className="text-xs text-gray-500">These instructions override the default behavior.</p>
+                        <p className="text-xs text-gray-500">{t('descInstructions')}</p>
                     </div>
                 </div>
             )}
@@ -268,12 +307,12 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
               <div className="space-y-6 max-w-2xl mx-auto">
                 {/* Theme */}
                 <div className="space-y-4">
-                  <label className="text-sm font-bold text-gray-900 dark:text-gray-100">Appearance</label>
+                  <label className="text-sm font-bold text-gray-900 dark:text-gray-100">{t('appearance')}</label>
                   <div className="grid grid-cols-3 gap-3">
                     {[
-                      { val: 'system', label: 'System', icon: Monitor },
-                      { val: 'dark', label: 'Dark', icon: Moon },
-                      { val: 'light', label: 'Light', icon: Sun },
+                      { val: 'system', label: t('themeSystem'), icon: Monitor },
+                      { val: 'dark', label: t('themeDark'), icon: Moon },
+                      { val: 'light', label: t('themeLight'), icon: Sun },
                     ].map((opt) => (
                       <button
                         key={opt.val}
@@ -293,6 +332,38 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
 
                 <div className="h-px bg-gray-100 dark:bg-gray-800" />
 
+                {/* Language Selector */}
+                <div className="space-y-4">
+                  <label className="text-sm font-bold text-gray-900 dark:text-gray-100">{t('language')}</label>
+                  <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+                    {[
+                      { val: 'en', label: 'English', icon: Globe },
+                      { val: 'cs', label: 'Čeština', icon: Globe },
+                      { val: 'ro', label: 'Română', icon: Globe },
+                      { val: 'de', label: 'Deutsch', icon: Globe },
+                      { val: 'it', label: 'Italiano', icon: Globe },
+                      { val: 'ru', label: 'Русский', icon: Globe },
+                    ].map((opt) => (
+                      <button
+                        key={opt.val}
+                        onClick={() => onUpdateSettings({...settings, language: opt.val})}
+                        className={`flex-shrink-0 flex items-center gap-2 px-4 py-3 rounded-2xl border-2 transition-all ${
+                          settings.language === opt.val 
+                            ? 'bg-blue-50 dark:bg-blue-500/10 border-blue-500 text-blue-600 dark:text-blue-400' 
+                            : 'bg-white dark:bg-[#252629] border-transparent text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-[#2d2e33]'
+                        }`}
+                      >
+                        <div className={`p-1 rounded-lg ${settings.language === opt.val ? 'bg-blue-200/50 dark:bg-blue-500/20' : 'bg-gray-100 dark:bg-gray-700/50'}`}>
+                            <opt.icon size={16} />
+                        </div>
+                        <span className="text-sm font-bold whitespace-nowrap">{opt.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="h-px bg-gray-100 dark:bg-gray-800" />
+
                 {/* Show Suggestions Toggle */}
                 <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-[#252629] rounded-2xl border border-gray-100 dark:border-gray-700/50">
                   <div className="flex items-center gap-4">
@@ -300,8 +371,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                       <MessageSquare size={22} />
                     </div>
                     <div>
-                      <div className="text-sm font-bold text-gray-900 dark:text-gray-200">Smart Suggestions</div>
-                      <div className="text-xs text-gray-500">Auto-generate follow-up questions</div>
+                      <div className="text-sm font-bold text-gray-900 dark:text-gray-200">{t('showSuggestions')}</div>
+                      <div className="text-xs text-gray-500">{t('descSuggestions')}</div>
                     </div>
                   </div>
                   <button 
@@ -323,8 +394,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                       <Keyboard size={22} />
                     </div>
                     <div>
-                      <div className="text-sm font-bold text-gray-900 dark:text-gray-200">Enter to Send</div>
-                      <div className="text-xs text-gray-500">Press Enter to send, Shift+Enter for new line</div>
+                      <div className="text-sm font-bold text-gray-900 dark:text-gray-200">{t('enterToSend')}</div>
+                      <div className="text-xs text-gray-500">{t('descEnterToSend')}</div>
                     </div>
                   </div>
                   <button 
@@ -345,14 +416,14 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
             {activeTab === 'voice' && (
               <div className="space-y-8 max-w-2xl mx-auto">
                  <div>
-                    <label className="text-sm font-bold text-gray-900 dark:text-gray-100 block mb-3">Default Voice</label>
+                    <label className="text-sm font-bold text-gray-900 dark:text-gray-100 block mb-3">{t('labelDefaultVoice')}</label>
                     <div className="relative">
                         <select 
                             value={settings.defaultVoiceURI} 
                             onChange={(e) => onUpdateSettings({...settings, defaultVoiceURI: e.target.value})}
                             className="w-full bg-gray-50 dark:bg-[#252629] border border-gray-200 dark:border-gray-700 rounded-2xl px-5 py-4 text-sm text-gray-900 dark:text-gray-200 focus:outline-none focus:border-blue-500 appearance-none"
                         >
-                            <option value="">System Default</option>
+                            <option value="">{t('optSystemDefault')}</option>
                             {voices.map((v: any) => (
                                 <option key={v.voiceURI} value={v.voiceURI}>{v.name} ({v.lang})</option>
                             ))}
@@ -365,7 +436,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
 
                  <div>
                     <div className="flex justify-between text-sm font-bold text-gray-900 dark:text-gray-100 mb-3">
-                        <span>Speaking Rate</span>
+                        <span>{t('labelSpeakingRate')}</span>
                         <span className="text-blue-600 dark:text-blue-400 font-mono bg-blue-50 dark:bg-blue-900/20 px-2 py-0.5 rounded">{settings.defaultSpeechRate}x</span>
                     </div>
                     <div className="px-1">
@@ -376,9 +447,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                             className="w-full h-3 bg-gray-200 dark:bg-gray-700 rounded-full appearance-none cursor-pointer accent-blue-500"
                         />
                         <div className="flex justify-between text-[10px] text-gray-400 uppercase font-bold tracking-wider mt-2">
-                            <span>Slow (0.5)</span>
-                            <span>Normal (1.0)</span>
-                            <span>Fast (2.0)</span>
+                            <span>{t('rateSlow')} (0.5)</span>
+                            <span>{t('rateNormal')} (1.0)</span>
+                            <span>{t('rateFast')} (2.0)</span>
                         </div>
                     </div>
                  </div>
@@ -391,8 +462,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                  <div className="p-5 bg-gray-50 dark:bg-[#252629] rounded-2xl border border-gray-200 dark:border-gray-700">
                     <div className="flex items-start justify-between mb-4">
                         <div>
-                            <h3 className="text-sm font-bold text-gray-900 dark:text-gray-200">Export Chat History</h3>
-                            <p className="text-xs text-gray-500 mt-1">Download a JSON backup of your conversations.</p>
+                            <h3 className="text-sm font-bold text-gray-900 dark:text-gray-200">{t('headerExport')}</h3>
+                            <p className="text-xs text-gray-500 mt-1">{t('descExport')}</p>
                         </div>
                         <div className="p-2 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg">
                             <Database size={20} />
@@ -402,15 +473,15 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                       onClick={handleExportData}
                       className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-white dark:bg-black/20 hover:bg-gray-100 dark:hover:bg-black/40 text-gray-900 dark:text-white border border-gray-200 dark:border-gray-600 rounded-xl text-sm font-bold transition-colors"
                     >
-                      <Download size={18} /> Download Backup
+                      <Download size={18} /> {t('btnDownload')}
                     </button>
                  </div>
 
                  <div className="p-5 bg-red-50 dark:bg-red-500/5 rounded-2xl border border-red-100 dark:border-red-500/20">
                     <div className="flex items-start justify-between mb-4">
                         <div>
-                            <h3 className="text-sm font-bold text-red-600 dark:text-red-400">Danger Zone</h3>
-                            <p className="text-xs text-red-500/70 dark:text-red-300/70 mt-1">Irreversible actions.</p>
+                            <h3 className="text-sm font-bold text-red-600 dark:text-red-400">{t('headerDanger')}</h3>
+                            <p className="text-xs text-red-500/70 dark:text-red-300/70 mt-1">{t('descDanger')}</p>
                         </div>
                         <div className="p-2 bg-red-100 dark:bg-red-500/20 text-red-600 dark:text-red-400 rounded-lg">
                             <Trash2 size={20} />
@@ -418,14 +489,14 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                     </div>
                     <button 
                       onClick={() => {
-                        if(window.confirm('Are you sure you want to delete ALL history? This cannot be undone.')) {
+                        if(window.confirm(t('descClearAll'))) {
                             onClearAllChats();
                             onClose();
                         }
                       }}
                       className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-white dark:bg-red-500/10 hover:bg-red-50 dark:hover:bg-red-500/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-500/30 rounded-xl text-sm font-bold transition-colors"
                     >
-                      Clear All History
+                      {t('clearAll')}
                     </button>
                  </div>
               </div>
@@ -444,13 +515,12 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                  </div>
 
                  <p className="text-gray-600 dark:text-gray-400 text-sm leading-relaxed">
-                    A next-generation multimodal AI interface designed for seamless creativity and productivity. 
-                    Powered by Gemini 2.5 Flash, Pro, and Imagine models.
+                    {t('descAbout')}
                  </p>
 
                  <div className="pt-8 border-t border-gray-200 dark:border-gray-800 w-full">
                     <p className="text-xs text-gray-400 dark:text-gray-600">
-                        &copy; {new Date().getFullYear()} Elora AI. All rights reserved.
+                        &copy; {new Date().getFullYear()} Elora AI. {t('rightsReserved')}
                     </p>
                  </div>
               </div>

@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Plus, MessageSquare, Trash2, X, Sparkles, ChevronDown, Image as ImageIcon } from 'lucide-react';
 import { ChatSession, Role } from '../types';
+import { translations, Language } from '../translations';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -11,6 +12,7 @@ interface SidebarProps {
   onNewChat: () => void;
   onDeleteSession: (id: string, e: React.MouseEvent) => void;
   onRenameSession: (id: string, newTitle: string) => void;
+  language: string; // Added language prop
 }
 
 const Sidebar: React.FC<SidebarProps> = ({
@@ -22,10 +24,16 @@ const Sidebar: React.FC<SidebarProps> = ({
   onNewChat,
   onDeleteSession,
   onRenameSession,
+  language,
 }) => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null);
+
+  const t = (key: keyof typeof translations['en']) => {
+      const lang = (language as Language) || 'en';
+      return translations[lang]?.[key] || translations['en'][key];
+  };
 
   // Sort sessions by newest first
   const sortedSessions = [...sessions].sort((a, b) => b.updatedAt - a.updatedAt);
@@ -100,7 +108,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         {/* Header */}
         <div className="p-4 shrink-0">
           <div className="flex items-center justify-between mb-6 md:hidden">
-             <span className="font-bold text-lg text-gray-900 dark:text-gray-200">Menu</span>
+             <span className="font-bold text-lg text-gray-900 dark:text-gray-200">{t('menu')}</span>
              <button 
                onClick={onClose} 
                className="p-1 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -121,20 +129,20 @@ const Sidebar: React.FC<SidebarProps> = ({
             <div className="bg-blue-500/10 p-1 rounded-lg group-hover:bg-blue-500/20 transition-colors">
                 <Plus size={18} className="text-blue-500 dark:text-blue-400" />
             </div>
-            <span className="font-medium text-sm">New chat</span>
+            <span className="font-medium text-sm">{t('newChat')}</span>
           </button>
         </div>
 
         {/* Chat List */}
         <div className="flex-1 overflow-y-auto px-3 pb-4 scrollbar-hide space-y-1" role="list">
-          <div className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-500 uppercase tracking-wider" id="recent-chats-heading">Recent</div>
+          <div className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-500 uppercase tracking-wider" id="recent-chats-heading">{t('recent')}</div>
           
           {sortedSessions.length === 0 ? (
             <div className="px-4 py-8 text-center">
                 <div className="w-12 h-12 bg-gray-200 dark:bg-gray-800/50 rounded-full flex items-center justify-center mx-auto mb-3">
                     <Sparkles size={20} className="text-gray-400 dark:text-gray-600"/>
                 </div>
-                <p className="text-gray-500 text-sm">No chat history yet.</p>
+                <p className="text-gray-500 text-sm">{t('noHistory')}</p>
             </div>
           ) : (
             sortedSessions.map((session) => {
@@ -183,7 +191,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                             >
                                 <MessageSquare size={16} className={`shrink-0 ${isActive ? 'text-blue-500 dark:text-blue-400' : 'text-gray-400 dark:text-gray-500'}`} />
                                 <span className="truncate text-sm font-medium block w-full">
-                                    {session.title || 'New Chat'}
+                                    {session.title || t('newChat')}
                                 </span>
                             </button>
                         )}
@@ -247,7 +255,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         {/* Footer (Credits) - User profile is now in Top Header */}
         <div className="p-4 border-t border-gray-200 dark:border-gray-800/50 shrink-0 text-center">
              <p className="text-[10px] text-gray-400 dark:text-gray-600 font-medium">
-                Powered by Gemini Pro
+                {t('poweredBy')}
              </p>
         </div>
       </aside>

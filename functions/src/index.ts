@@ -3,6 +3,7 @@ import { defineSecret } from "firebase-functions/params";
 import { GoogleGenAI, Part, Content, ThinkingConfig, ThinkingLevel } from "@google/genai";
 import * as admin from "firebase-admin";
 import { SUGGESTION_PROMPT } from "./prompts/suggestion";
+import { ROUTER_PROMPT } from "./prompts/router";
 
 admin.initializeApp();
 
@@ -31,8 +32,13 @@ interface ChatRequest {
     history?: HistoryMessage[];
     newMessage?: string;
     attachments?: ChatAttachment[];
-    modelId?: 'gemini-2.5-flash' | 'gemini-3-pro-preview' | 'gemini-2.5-flash-lite' | 'gemini-2.5-flash-image';
+    modelId?: 'gemini-2.5-flash' | 'gemini-3-pro-preview' | 'gemini-2.5-flash-lite' | 'gemini-2.5-flash-image' | 'auto';
     settings?: ChatSettings;
+}
+
+interface RouterDecision {
+    targetModel: string;
+    reasoning: string;
 }
 
 // Define secret for Gemini API key
@@ -54,6 +60,35 @@ const isInlineDataSupported = (mimeType: string): boolean => {
            mimeType.startsWith('audio/') || 
            mimeType === 'application/pdf';
 };
+
+// Helper: Router Logic
+async function determineModelFromIntent(ai: GoogleGenAI, lastMessage: string, history: HistoryMessage[]): Promise<RouterDecision> {
+    try {
+        // Simple context summary (last 2 messages to save tokens)
+        const context = history.slice(-2).map(m => `${m.role}: ${m.text}`).join('\n');
+        
+        const prompt = `
+        ${ROUTER_PROMPT}
+        
+        Context:
+        ${context}
+        
+        User Request: "${lastMessage}"
+        `;
+
+        const result: any = await ai.models.generateContent({
+            model: "gemini-2.5-flash-lite",
+            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            config: { responseMimeType: 'application/json' }
+        });
+
+        const text = result.text;
+        return JSON.parse(text || "{}") as RouterDecision;
+    } catch (e) {
+        console.error("Router failed, defaulting to Flash:", e);
+        return { targetModel: "gemini-2.5-flash", reasoning: "Router error fallback" };
+    }
+}
 
 /**
  * Main chat streaming endpoint with SSE (v2)
@@ -98,6 +133,23 @@ export const streamChat = onRequest(
       res.flushHeaders(); // Flush headers immediately to start streaming
 
       const ai = getAI();
+
+      // --- ROUTER LOGIC ---
+      let selectedModelId: string | undefined = modelId;
+
+      if (modelId === 'auto') {
+          try {
+             const decision = await determineModelFromIntent(ai, newMessage || "User sent attachment", history || []);
+             selectedModelId = decision.targetModel;
+             console.log(`[Auto-Router] Routed to ${selectedModelId}. Reason: ${decision.reasoning}`);
+             
+             // Optional: Inform client of routing decision (debug or UI feedback)
+             // res.write(`data: ${JSON.stringify({ thinking: `Auto-routed to ${selectedModelId} (${decision.reasoning})` })}\n\n`);
+          } catch (err) {
+             console.error("[Auto-Router] Error, using default:", err);
+             selectedModelId = "gemini-2.5-flash";
+          }
+      }
 
       // Prepare message parts
       const parts: Part[] = [];
@@ -155,9 +207,9 @@ export const streamChat = onRequest(
               : nameInstruction;
       }
 
-      // Model Type Checks
-      const isImageGen = modelId === "gemini-2.5-flash-image";
-      const isLite = modelId === "gemini-2.5-flash-lite";
+      // Model Type Checks (Use selectedModelId)
+      const isImageGen = selectedModelId === "gemini-2.5-flash-image";
+      const isLite = selectedModelId === "gemini-2.5-flash-lite";
       
       // Thinking Config: Enable for Flash/Pro, Disable for Lite/Image
       const isThinkingCapable = !isLite && !isImageGen;
@@ -168,7 +220,7 @@ export const streamChat = onRequest(
       if (isImageGen) {
         // Image generation (non-streaming)
         const response: any = await ai.models.generateContent({
-          model: modelId,
+          model: selectedModelId!, // Use routed model
           contents,
           config: {
             imageConfig: settings?.aspectRatio ? {
@@ -206,7 +258,7 @@ export const streamChat = onRequest(
         // Regular chat streaming with Google Search & Thinking
         
         // Check if Pro model
-        const isPro = modelId === "gemini-3-pro-preview";
+        const isPro = selectedModelId === "gemini-3-pro-preview";
 
         // Configure Thinking based on model type
         let thinkingConfig: ThinkingConfig | undefined = undefined;
@@ -237,12 +289,12 @@ export const streamChat = onRequest(
               ]
             : [{ googleSearch: {} }];
 
-        console.log(`[DEBUG] Model: ${modelId}, isPro: ${isPro}`);
+        console.log(`[DEBUG] Model: ${selectedModelId}, isPro: ${isPro}`);
         console.log(`[DEBUG] Tools config:`, JSON.stringify(tools));
         console.log(`[DEBUG] ThinkingConfig:`, JSON.stringify(thinkingConfig));
 
         const result = await ai.models.generateContentStream({
-          model: modelId || "gemini-2.5-flash",
+          model: selectedModelId || "gemini-2.5-flash",
           contents,
           config: {
             tools,
@@ -381,14 +433,19 @@ export const streamChat = onRequest(
         if (suggestionsEnabled && fullResponseText.trim().length > 10) {
             try {
                 console.log("[Suggestions] Generating...");
-                const suggestionResp = await ai.models.generateContent({
+                const suggestionResp: any = await ai.models.generateContent({
                     model: "gemini-2.5-flash-lite",
-                    contents: `
-                        ${SUGGESTION_PROMPT}
-                        
-                        Context - AI Response:
-                        "${fullResponseText.slice(0, 2000)}"
-                    `,
+                    contents: [{ 
+                        role: "user",
+                        parts: [{
+                            text: `
+                                ${SUGGESTION_PROMPT}
+                                
+                                Context - AI Response:
+                                "${fullResponseText.slice(0, 2000)}"
+                            `
+                        }]
+                    }],
                     config: {
                         responseMimeType: 'application/json',
                         temperature: 0.7
