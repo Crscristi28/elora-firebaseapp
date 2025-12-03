@@ -223,6 +223,7 @@ export const streamChat = onRequest(
           model: selectedModelId!, // Use routed model
           contents,
           config: {
+            responseModalities: ['TEXT', 'IMAGE'],
             imageConfig: settings?.aspectRatio ? {
               aspectRatio: settings.aspectRatio
             } : undefined
