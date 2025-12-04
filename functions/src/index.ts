@@ -4,6 +4,7 @@ import { GoogleGenAI, Part, Content, ThinkingConfig, ThinkingLevel } from "@goog
 import * as admin from "firebase-admin";
 import { SUGGESTION_PROMPT } from "./prompts/suggestion";
 import { ROUTER_PROMPT } from "./prompts/router";
+import { FLASH_SYSTEM_PROMPT } from "./prompts/flash";
 
 admin.initializeApp();
 
@@ -197,17 +198,28 @@ export const streamChat = onRequest(
 
       // --- SYSTEM INSTRUCTION CONSTRUCTION ---
       let systemInstruction = settings?.systemInstruction ? String(settings.systemInstruction) : undefined;
-      
+
       // Personalization: Inject User Name if provided
       const userName = settings?.userName;
       if (userName) {
           const nameInstruction = `The user's name is "${userName}". Use it naturally in conversation where appropriate.`;
-          systemInstruction = systemInstruction 
+          systemInstruction = systemInstruction
               ? `${nameInstruction}\n\n${systemInstruction}`
               : nameInstruction;
       }
 
       // Model Type Checks (Use selectedModelId)
+      const isFlash = selectedModelId === "gemini-2.5-flash";
+      const isPro = selectedModelId === "gemini-3-pro-preview";
+
+      // Add model-specific system prompts
+      if (isFlash) {
+          systemInstruction = systemInstruction
+              ? `${FLASH_SYSTEM_PROMPT}\n\n${systemInstruction}`
+              : FLASH_SYSTEM_PROMPT;
+      }
+
+      // Other Model Type Checks
       const isImageGen = selectedModelId === "gemini-2.5-flash-image";
       const isLite = selectedModelId === "gemini-2.5-flash-lite";
       
@@ -257,9 +269,6 @@ export const streamChat = onRequest(
         return; // No suggestions for Image Gen
       } else {
         // Regular chat streaming with Google Search & Thinking
-        
-        // Check if Pro model
-        const isPro = selectedModelId === "gemini-3-pro-preview";
 
         // Configure Thinking based on model type
         let thinkingConfig: ThinkingConfig | undefined = undefined;
