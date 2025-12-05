@@ -81,6 +81,7 @@ export const translations = {
     descFormal: "Professional & strict",
     styleLearning: "Learning",
     descLearning: "Simple & educational",
+    speechUnsupported: "Speech recognition is not supported in this browser.",
   },
   cs: {
     welcomeTitle: "Vítejte v Eloře",
@@ -164,6 +165,7 @@ export const translations = {
     descFormal: "Profesionální a přísný",
     styleLearning: "Výukový",
     descLearning: "Jednoduchý a vzdělávací",
+    speechUnsupported: "Rozpoznávání řeči není v tomto prohlížeči podporováno.",
   },
   ro: {
     welcomeTitle: "Bun venit la Elora",
@@ -247,6 +249,7 @@ export const translations = {
     descFormal: "Profesional și strict",
     styleLearning: "Învățare",
     descLearning: "Simplu și educațional",
+    speechUnsupported: "Recunoașterea vocală nu este acceptată în acest browser.",
   },
   de: {
     welcomeTitle: "Willkommen bei Elora",
@@ -330,6 +333,7 @@ export const translations = {
     descFormal: "Professionell & strikt",
     styleLearning: "Lernen",
     descLearning: "Einfach & lehrreich",
+    speechUnsupported: "Die Spracherkennung wird in diesem Browser nicht unterstützt.",
   },
   it: {
     welcomeTitle: "Benvenuto in Elora",
@@ -413,6 +417,7 @@ export const translations = {
     descFormal: "Professionale & rigoroso",
     styleLearning: "Apprendimento",
     descLearning: "Semplice & educativo",
+    speechUnsupported: "Il riconoscimento vocale non è supportato in questo browser.",
   },
   ru: {
     welcomeTitle: "Добро пожаловать в Elora",
@@ -496,6 +501,7 @@ export const translations = {
     descFormal: "Профессиональный",
     styleLearning: "Обучающий",
     descLearning: "Простой и понятный",
+    speechUnsupported: "Распознавание речи не поддерживается в этом браузере.",
   }
 };
 

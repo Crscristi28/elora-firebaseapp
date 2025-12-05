@@ -167,7 +167,7 @@ const InputArea: React.FC<InputAreaProps> = ({ onSend, isLoading, selectedModel,
 
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      alert("Speech recognition is not supported in this browser.");
+      alert(t('speechUnsupported'));
       return;
     }
 
@@ -386,7 +386,7 @@ const InputArea: React.FC<InputAreaProps> = ({ onSend, isLoading, selectedModel,
 
   return (
     <div
-        className={`bg-white dark:bg-[#0e0e10] px-3 pt-3 relative transition-colors duration-200 ${isDragging ? 'bg-gray-50 dark:bg-[#1a1b1e]' : ''}`}
+        className={`bg-white dark:bg-[#0e0e10] px-3 relative transition-colors duration-200 ${isDragging ? 'bg-gray-50 dark:bg-[#1a1b1e]' : ''}`}
         style={{ paddingBottom: '6px' }}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
@@ -402,129 +402,134 @@ const InputArea: React.FC<InputAreaProps> = ({ onSend, isLoading, selectedModel,
         </div>
       )}
       
-      {/* Quote Reply Preview */}
-      {replyingTo && (
-        <div className="max-w-3xl mx-auto w-full mb-2 px-1 animate-slide-up">
-          <div className="flex items-center justify-between p-2 rounded-lg bg-gray-100 dark:bg-[#1a1b1e] border-l-4 border-blue-500">
-             <div className="flex-1 min-w-0">
-                <div className="text-xs font-bold text-blue-600 dark:text-blue-400 mb-0.5">
-                   Replying to {replyingTo.role === 'user' ? 'You' : 'Elora'}
-                </div>
-                <div className="text-xs text-gray-600 dark:text-gray-300 truncate">
-                   {replyingTo.text}
-                </div>
-             </div>
-             <button 
-               onClick={onClearReply}
-               className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700"
-             >
-               <X size={14} />
-             </button>
-          </div>
-        </div>
-      )}
-
-      {/* Attachment Previews */}
-      {attachments.length > 0 && (
-        <div className="flex gap-3 overflow-x-auto px-4 mb-3 py-2 scrollbar-hide max-w-3xl mx-auto w-full">
-          {attachments.map((att, i) => (
-            <div key={i} className="relative group flex-shrink-0">
-              {att.mimeType.startsWith('image/') ? (
-                <div className="relative">
-                  <img
-                    src={att.storageUrl || `data:${att.mimeType};base64,${att.data}`}
-                    alt="preview"
-                    className="h-16 w-16 object-cover rounded-xl border border-gray-300 dark:border-gray-700"
-                  />
-                  {uploadingIndexes.has(i) && (
-                    <div className="absolute inset-0 bg-black/50 rounded-xl flex items-center justify-center">
-                      <Loader2 size={20} className="text-white animate-spin" />
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="relative h-16 w-16 bg-gray-100 dark:bg-gray-800 rounded-xl border border-gray-300 dark:border-gray-700 flex flex-col items-center justify-center text-center p-1">
-                   <FileText size={24} className="text-gray-500 dark:text-gray-400 mb-1"/>
-                   <span className="text-[9px] text-gray-600 dark:text-gray-300 truncate w-full leading-tight px-0.5">{att.name?.slice(0, 10)}</span>
-                   {uploadingIndexes.has(i) && (
-                    <div className="absolute inset-0 bg-black/50 rounded-xl flex items-center justify-center">
-                      <Loader2 size={20} className="text-white animate-spin" />
-                    </div>
-                  )}
-                </div>
-              )}
-              <button
-                onClick={() => removeAttachment(i)}
-                className="absolute -top-2 -right-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-white rounded-full p-1 border border-gray-300 dark:border-gray-600 shadow-md hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors z-10"
-              >
-                <X size={10} />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div className="max-w-3xl mx-auto w-full flex items-end gap-2 justify-center">
+      {/* Main Input Container */}
+      <div className="max-w-3xl mx-auto w-full flex flex-col justify-center bg-gray-100 dark:bg-[#2d2e33] rounded-[28px] p-2 transition-all border border-transparent focus-within:border-gray-300 dark:focus-within:border-gray-600">
         
-        {/* Plus / File Button */}
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          className="w-10 h-10 rounded-full bg-gray-100 dark:bg-[#2d2e33] hover:bg-gray-200 dark:hover:bg-[#3d3e44] text-gray-500 dark:text-gray-300 flex items-center justify-center transition-colors flex-shrink-0 mb-1"
-          title="Add File"
-        >
-          <Plus size={22} />
-        </button>
-        <input
-          type="file"
-          ref={fileInputRef}
-          onChange={handleFileSelect}
-          className="hidden"
-          accept="image/*,application/pdf,text/plain,text/csv,.pdf,.txt,.js,.ts,.py,.java,.c,.cpp,.h,.html,.css,.json,.md"
-          multiple
-        />
+        {/* Quote Reply and Attachments Container */}
+        <div className="px-2 pt-1">
+            {/* Quote Reply Preview */}
+            {replyingTo && (
+                <div className="w-full mb-2 px-1 animate-slide-up">
+                <div className="flex items-center justify-between p-2 rounded-lg bg-gray-200 dark:bg-[#1a1b1e] border-l-4 border-blue-500">
+                    <div className="flex-1 min-w-0">
+                        <div className="text-xs font-bold text-blue-600 dark:text-blue-400 mb-0.5">
+                        Replying to {replyingTo.role === 'user' ? 'You' : 'Elora'}
+                        </div>
+                        <div className="text-xs text-gray-600 dark:text-gray-300 truncate">
+                        {replyingTo.text}
+                        </div>
+                    </div>
+                    <button 
+                    onClick={onClearReply}
+                    className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-md hover:bg-gray-300 dark:hover:bg-gray-700"
+                    >
+                    <X size={14} />
+                    </button>
+                </div>
+                </div>
+            )}
 
-        {/* Input Pill (Expanded to fill more space) */}
-        <div className="flex-1 max-w-[80%] bg-gray-100 dark:bg-[#2d2e33] rounded-[24px] min-h-[50px] flex items-center px-4 py-2 transition-all border border-transparent focus-within:border-gray-300 dark:focus-within:border-gray-600">
-          <textarea
-            ref={textareaRef}
-            value={input}
-            onChange={handleInput}
-            onKeyDown={handleKeyDown}
-            placeholder={isImageGen ? t('imagePlaceholder') : t('placeholder')}
-            className={`flex-1 bg-transparent text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none resize-none overflow-y-auto leading-6 text-[16px] py-1 ${isListening ? 'animate-pulse placeholder-blue-500 dark:placeholder-blue-400' : ''}`}
-            rows={1}
-            style={{ height: '24px', maxHeight: '120px' }}
-          />
-          
-          {/* Mic Icon (inside pill) - Hidden when typing */}
-          {(!input.trim() || isListening) && (
-            <button
-                onClick={toggleListening}
-                className={`ml-2 p-1 rounded-full transition-all duration-200 ${
-                isListening 
-                    ? 'text-red-500 animate-pulse' 
-                    : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-200'
-                }`}
-                title="Dictate"
-            >
-                {isListening ? <Square size={18} fill="currentColor" /> : <Mic size={22} />}
-            </button>
-          )}
+            {/* Attachment Previews */}
+            {attachments.length > 0 && (
+                <div className="flex gap-3 overflow-x-auto mb-2 py-2 scrollbar-hide w-full">
+                {attachments.map((att, i) => (
+                    <div key={i} className="relative group flex-shrink-0">
+                    {att.mimeType.startsWith('image/') ? (
+                        <div className="relative">
+                        <img
+                            src={att.storageUrl || `data:${att.mimeType};base64,${att.data}`}
+                            alt="preview"
+                            className="h-16 w-16 object-cover rounded-xl border border-gray-300 dark:border-gray-700"
+                        />
+                        {uploadingIndexes.has(i) && (
+                            <div className="absolute inset-0 bg-black/50 rounded-xl flex items-center justify-center">
+                            <Loader2 size={20} className="text-white animate-spin" />
+                            </div>
+                        )}
+                        </div>
+                    ) : (
+                        <div className="relative h-16 w-16 bg-gray-200 dark:bg-gray-800 rounded-xl border border-gray-300 dark:border-gray-700 flex flex-col items-center justify-center text-center p-1">
+                        <FileText size={24} className="text-gray-500 dark:text-gray-400 mb-1"/>
+                        <span className="text-[9px] text-gray-600 dark:text-gray-300 truncate w-full leading-tight px-0.5">{att.name?.slice(0, 10)}</span>
+                        {uploadingIndexes.has(i) && (
+                            <div className="absolute inset-0 bg-black/50 rounded-xl flex items-center justify-center">
+                            <Loader2 size={20} className="text-white animate-spin" />
+                            </div>
+                        )}
+                        </div>
+                    )}
+                    <button
+                        onClick={() => removeAttachment(i)}
+                        className="absolute -top-2 -right-2 bg-gray-300 dark:bg-gray-700 text-gray-700 dark:text-white rounded-full p-1 border border-gray-400 dark:border-gray-600 shadow-md hover:bg-gray-400 dark:hover:bg-gray-600 transition-colors z-10"
+                    >
+                        <X size={10} />
+                    </button>
+                    </div>
+                ))}
+                </div>
+            )}
         </div>
 
-        {/* Send Button (Circular) */}
-        <button
-          onClick={handleSend}
-          disabled={!hasContent || isLoading || isUploading}
-          className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-200 flex-shrink-0 mb-1 ${
-            hasContent && !isLoading && !isUploading
-              ? 'bg-black dark:bg-white text-white dark:text-black hover:bg-gray-800 dark:hover:bg-gray-200 shadow-lg scale-100'
-              : 'bg-gray-100 dark:bg-[#2d2e33] text-gray-400 dark:text-gray-500 cursor-not-allowed'
-          }`}
-          title={isUploading ? 'Uploading files...' : ''}
-        >
-          {isUploading ? <Loader2 size={20} className="animate-spin" /> : isImageGen ? <ImageIcon size={20} /> : <ArrowUp size={22} strokeWidth={2.5} />}
-        </button>
+        {/* Bottom row with input and buttons */}
+        <div className="flex items-end gap-2 w-full">
+            {/* Plus / File Button */}
+            <button
+                onClick={() => fileInputRef.current?.click()}
+                className="w-9 h-9 rounded-full hover:bg-gray-200 dark:hover:bg-[#3d3e44] text-gray-500 dark:text-gray-300 flex items-center justify-center transition-colors flex-shrink-0"
+                title="Add File"
+                >
+                <Plus size={22} />
+            </button>
+            <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileSelect}
+                className="hidden"
+                accept="image/*,application/pdf,text/plain,text/csv,.pdf,.txt,.js,.ts,.py,.java,.c,.cpp,.h,.html,.css,.json,.md"
+                multiple
+            />
+
+            {/* Textarea */}
+            <textarea
+                ref={textareaRef}
+                value={input}
+                onChange={handleInput}
+                onKeyDown={handleKeyDown}
+                placeholder={isImageGen ? t('imagePlaceholder') : t('placeholder')}
+                className={`flex-1 bg-transparent text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none resize-none overflow-y-auto leading-6 text-[16px] py-1.5 ${isListening ? 'animate-pulse placeholder-blue-500 dark:placeholder-blue-400' : ''}`}
+                rows={1}
+                style={{ height: '28px', maxHeight: '120px' }}
+            />
+            
+            {/* Mic Icon (inside pill) - Hidden when typing */}
+            {(!input.trim() || isListening) && !hasContent && (
+                <button
+                    onClick={toggleListening}
+                    className={`w-9 h-9 rounded-full flex items-center justify-center transition-all duration-200 flex-shrink-0 ${
+                    isListening 
+                        ? 'text-red-500 animate-pulse' 
+                        : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-[#3d3e44]'
+                    }`}
+                    title="Dictate"
+                >
+                    {isListening ? <Square size={18} fill="currentColor" /> : <Mic size={22} />}
+                </button>
+            )}
+
+            {/* Send Button (Circular) */}
+            <button
+            onClick={handleSend}
+            disabled={!hasContent || isLoading || isUploading}
+            className={`w-9 h-9 rounded-full flex items-center justify-center transition-all duration-200 flex-shrink-0 ${
+                hasContent && !isLoading && !isUploading
+                ? 'bg-black dark:bg-white text-white dark:text-black hover:bg-gray-800 dark:hover:bg-gray-200 shadow-md scale-100'
+                : 'bg-gray-200 dark:bg-[#3d3e44] text-gray-400 dark:text-gray-500 cursor-not-allowed scale-90'
+            }`}
+            title={isUploading ? 'Uploading files...' : ''}
+            >
+            {isUploading ? <Loader2 size={20} className="animate-spin" /> : isImageGen ? <ImageIcon size={20} /> : <ArrowUp size={22} strokeWidth={2.5} />}
+            </button>
+        </div>
       </div>
       
       <div className="text-center mt-3 text-[10px] text-gray-500 dark:text-gray-600 font-medium tracking-wide">

@@ -86,12 +86,19 @@ const Sidebar: React.FC<SidebarProps> = ({
     });
     return map;
   }, [sessions]);
+  
+  const handleSessionClick = (sessionId: string) => {
+    onSelectSession(sessionId);
+    if (window.innerWidth < 768) {
+      onClose();
+    }
+  };
 
   return (
     <>
       {/* Mobile Overlay */}
       <div
-        className={`fixed inset-0 bg-black/60 dark:bg-black/60 z-40 transition-opacity duration-300 md:hidden ${
+        className={`fixed inset-0 z-40 transition-opacity duration-300 md:hidden ${
           isOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
         }`}
         onClick={onClose}
@@ -179,10 +186,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                             </div>
                         ) : (
                             <button
-                                onClick={() => {
-                                    onSelectSession(session.id);
-                                    if (window.innerWidth < 768) onClose();
-                                }}
+                                onClick={() => handleSessionClick(session.id)}
                                 onDoubleClick={(e) => handleStartEdit(session, e)}
                                 className="w-full flex items-center gap-3 px-3 py-3 text-left rounded-l-xl focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500/50"
                                 aria-label={`Load chat: ${session.title || 'New Chat'}`}
