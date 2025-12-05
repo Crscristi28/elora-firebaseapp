@@ -268,7 +268,7 @@ const App: React.FC = () => {
   };
 
   // --- MAIN SEND HANDLER (Optimized for Smoothness & Safety) ---
-  const handleSendMessage = useCallback(async (text: string, attachments: Attachment[], settings: PromptSettings) => {
+  const handleSendMessage = useCallback(async (text: string, attachments: Attachment[], settings: PromptSettings, mode?: 'image' | 'research') => {
     if (!user?.uid) return;
 
     // Auto-create chat if none exists
@@ -344,6 +344,9 @@ const App: React.FC = () => {
     streamAttachmentsRef.current = [];
     isStreamingRef.current = true;
     
+    // Determine which model to use (Image Mode Override)
+    const modelToUse = mode === 'image' ? ModelId.IMAGE_GEN : selectedModel;
+    
     // 2. Start Animation Loop (Instant display - no char-by-char delay)
     const updateUiLoop = () => {
         if (!isStreamingRef.current) return;
@@ -381,7 +384,7 @@ const App: React.FC = () => {
       if (dbDebounceTimerRef.current) clearTimeout(dbDebounceTimerRef.current);
 
       const finalResponseText = await streamChatResponse(
-        messages, finalText, attachments, selectedModel, settings,
+        messages, finalText, attachments, modelToUse, settings,
         { 
             showSuggestions: appSettings.showSuggestions,
             userName: appSettings.userName // PASS USER NAME TO BACKEND

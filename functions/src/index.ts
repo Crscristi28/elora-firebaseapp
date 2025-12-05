@@ -26,6 +26,7 @@ interface ChatSettings {
     temperature?: number;
     topP?: number;
     aspectRatio?: '1:1' | '16:9' | '9:16' | '4:3' | '3:4';
+    imageStyle?: string; // Added imageStyle
     showSuggestions?: boolean;
 }
 
@@ -231,6 +232,25 @@ export const streamChat = onRequest(
 
       if (isImageGen) {
         // Image generation (non-streaming)
+        
+        // --- STYLE MODIFIER ---
+        // If a style is selected, append it to the user's prompt
+        if (settings?.imageStyle && settings.imageStyle !== 'none') {
+            const readableStyle = settings.imageStyle.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+            const stylePrompt = `\n\nStyle: ${readableStyle}, high quality, detailed.`;
+            
+            // Find the text part in the last user message and append style
+            const lastUserMsg = contents[contents.length - 1];
+            if (lastUserMsg && lastUserMsg.parts) {
+                const textPart = lastUserMsg.parts.find(p => p.text);
+                if (textPart) {
+                    textPart.text += stylePrompt;
+                } else {
+                    lastUserMsg.parts.push({ text: stylePrompt });
+                }
+            }
+        }
+
         const response: any = await ai.models.generateContent({
           model: selectedModelId!, // Use routed model
           contents,

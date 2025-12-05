@@ -51,6 +51,7 @@ export const streamChatResponse = async (
           topP: settings.topP,
           systemInstruction: finalSystemInstruction,
           aspectRatio: settings.aspectRatio,
+          imageStyle: settings.imageStyle, // Pass imageStyle to backend
           showSuggestions: appSettings.showSuggestions, // Pass the toggle to backend
           userName: appSettings.userName, // Pass user name to backend
         },

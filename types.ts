@@ -81,18 +81,14 @@ export const MODELS: ModelConfig[] = [
     description: 'Advanced reasoning and complex tasks',
     icon: 'Brain',
   },
-  {
-    id: ModelId.IMAGE_GEN,
-    name: 'Elora Imagine',
-    description: 'Generate images from text',
-    icon: 'Image',
-  },
+  // IMAGE_GEN removed from UI selector - accessed via Input Area mode only
 ];
 
 // --- Prompt Engineering Types ---
 
 export type ToneStyle = 'normal' | 'learning' | 'concise' | 'explanatory' | 'formal';
 export type AspectRatio = '1:1' | '3:4' | '4:3' | '9:16' | '16:9';
+export type ImageStyle = 'none' | 'photorealistic' | 'anime' | 'digital-art' | 'oil-painting' | 'sketch';
 
 export interface PromptSettings {
   style: ToneStyle;
@@ -100,6 +96,7 @@ export interface PromptSettings {
   temperature: number;
   topP: number;
   aspectRatio?: AspectRatio;
+  imageStyle?: ImageStyle; // New field
 }
 
 export const TONE_PROMPTS: Record<ToneStyle, string> = {
