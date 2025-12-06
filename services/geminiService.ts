@@ -20,7 +20,9 @@ export const streamChatResponse = async (
   onSources?: (sources: Source[]) => void,
   onThinking?: (text: string) => void,
   onSuggestions?: (suggestions: string[]) => void,
-  onImage?: (image: { mimeType: string; data: string; aspectRatio?: string }) => Promise<void>
+  onImage?: (image: { mimeType: string; data: string; aspectRatio?: string }) => Promise<void>,
+  onRoutedModel?: (model: string) => void,
+  onGeneratingImage?: () => void
 ): Promise<string> => {
   
   // Construct System Instruction
@@ -124,6 +126,14 @@ export const streamChatResponse = async (
               if (onSuggestions) {
                   onSuggestions(data.suggestions);
               }
+            }
+
+            if (data.routedModel && onRoutedModel) {
+              onRoutedModel(data.routedModel);
+            }
+
+            if (data.generatingImage && onGeneratingImage) {
+              onGeneratingImage();
             }
 
             if (data.done) {

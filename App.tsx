@@ -32,7 +32,7 @@ const App: React.FC = () => {
   } = useFirestoreSync();
 
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedModel, setSelectedModel] = useState<ModelId>(ModelId.FLASH);
+  const [selectedModel, setSelectedModel] = useState<ModelId>(ModelId.AUTO);
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -54,6 +54,8 @@ const App: React.FC = () => {
   const dbDebounceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const [minFooterHeight, setMinFooterHeight] = useState<number>(100); // Default 100px
+  const [routedModel, setRoutedModel] = useState<string | null>(null);
+  const [isGeneratingImage, setIsGeneratingImage] = useState<boolean>(false);
 
   const inputAreaRef = useRef<HTMLDivElement>(null);
 
@@ -320,6 +322,8 @@ const App: React.FC = () => {
     await addMessageToDb(sessionId, newUserMsg);
 
     setIsLoading(true);
+    setRoutedModel(null);
+    setIsGeneratingImage(false);
 
     const botMsgId = (Date.now() + 1).toString();
     const botMsgPlaceholder: ChatMessage = {
@@ -454,11 +458,19 @@ const App: React.FC = () => {
             } else {
                 console.log("APP: Missing user or sessionId!", user?.uid, sessionId);
             }
+        },
+        (model) => {
+            setRoutedModel(model);
+        },
+        () => {
+            setIsGeneratingImage(true);
         }
       );
 
       // --- CLEANUP & FINAL SYNC ---
       isStreamingRef.current = false;
+      setIsLoading(false); // Ensure loading is cleared even if no text chunks arrived
+      setIsGeneratingImage(false); // Reset generating image state
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
       if (dbDebounceTimerRef.current) clearTimeout(dbDebounceTimerRef.current);
 
@@ -650,12 +662,14 @@ const App: React.FC = () => {
             <MessageList
               messages={displayMessages}
               isThinking={isLoading}
+              selectedModel={routedModel || selectedModel}
+              isGeneratingImage={isGeneratingImage}
               onEdit={handleEditMessage}
               onReply={handleReply}
               onSuggestionClick={handleSuggestionClick}
               minFooterHeight={minFooterHeight}
-              user={userWithPreferredName} // Pass the customized user object
-              language={resolveLanguage(appSettings.language)} // Added prop
+              user={userWithPreferredName}
+              language={resolveLanguage(appSettings.language)}
             />
             <div ref={inputAreaRef}>
               <InputArea

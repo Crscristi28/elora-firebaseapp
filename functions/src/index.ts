@@ -145,9 +145,10 @@ export const streamChat = onRequest(
              const decision = await determineModelFromIntent(ai, newMessage || "User sent attachment", history || []);
              selectedModelId = decision.targetModel;
              console.log(`[Auto-Router] Routed to ${selectedModelId}. Reason: ${decision.reasoning}`);
-             
-             // Optional: Inform client of routing decision (debug or UI feedback)
-             // res.write(`data: ${JSON.stringify({ thinking: `Auto-routed to ${selectedModelId} (${decision.reasoning})` })}\n\n`);
+
+             // Inform client of routing decision for UI (e.g., indicators)
+             res.write(`data: ${JSON.stringify({ routedModel: selectedModelId })}\n\n`);
+             if ((res as any).flush) (res as any).flush();
           } catch (err) {
              console.error("[Auto-Router] Error, using default:", err);
              selectedModelId = "gemini-2.5-flash";
@@ -347,6 +348,10 @@ export const streamChat = onRequest(
               if (style && style !== "none") {
                 finalPrompt += `\n\nStyle: ${style}, high quality, detailed.`;
               }
+
+              // Notify frontend that image generation is starting
+              res.write(`data: ${JSON.stringify({ generatingImage: true })}\n\n`);
+              if ((res as any).flush) (res as any).flush();
 
               // Call the image model
               const imageResponse: any = await ai.models.generateContent({

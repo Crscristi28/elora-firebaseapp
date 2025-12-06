@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
 import { ChatMessage, Role, UserProfile } from '../types';
 import MarkdownRenderer from './MarkdownRenderer';
+import Indicators from './Indicators';
 import { 
   AlertCircle, Sparkles, Copy, Check, 
   FileText, Pencil, Volume2, Square, 
@@ -12,12 +13,14 @@ import { translations, Language } from '../translations';
 interface MessageListProps {
   messages: ChatMessage[];
   isThinking: boolean;
+  selectedModel?: string;
+  isGeneratingImage?: boolean;
   onEdit?: (id: string, newText: string) => void;
   onReply?: (msg: ChatMessage) => void;
   onSuggestionClick?: (text: string) => void;
   minFooterHeight: number;
   user?: UserProfile | null;
-  language: string; // Added language prop
+  language: string;
 }
 
 // --- Helper Functions ---
@@ -42,27 +45,6 @@ const formatFileSize = (base64: string) => {
   }
 };
 
-// --- ThinkingPlaceholder Component ---
-const ThinkingPlaceholder = () => {
-    const [text, setText] = useState('Just a sec...');
-
-    useEffect(() => {
-        const timer1 = setTimeout(() => setText('Analyzing context...'), 2500);
-        const timer2 = setTimeout(() => setText('Thinking...'), 5000);
-        return () => { clearTimeout(timer1); clearTimeout(timer2); };
-    }, []);
-
-    return (
-        <div className="flex items-center gap-2 animate-fade-in select-none py-2">
-            <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
-            </span>
-            <span className="text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wide">{text}</span>
-        </div>
-    );
-};
-
 // --- MessageItem Component ---
 const MessageItem = ({
   msg,
@@ -74,6 +56,8 @@ const MessageItem = ({
   selectedVoiceURI,
   speechRate,
   showTTSSettingsId,
+  selectedModel,
+  isGeneratingImage,
   onSetEditText,
   onStartEditing,
   onCancelEditing,
@@ -204,8 +188,8 @@ const MessageItem = ({
 
             <div className="flex items-center gap-2">
                 <span className="text-sm font-bold text-gray-900 dark:text-gray-100">Elora</span>
-                {msg.thinking && (
-                    <button 
+                {msg.thinking && !msg.isStreaming && (
+                    <button
                         onClick={() => setIsThinkingExpanded(!isThinkingExpanded)}
                         className="flex items-center gap-1.5 ml-2 px-2 py-1 rounded-full bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/20 transition-colors text-[10px] font-medium text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-transparent"
                     >
@@ -227,11 +211,16 @@ const MessageItem = ({
         {/* Body */}
         <div className="pl-0 md:pl-9 w-full">
             {msg.isStreaming && (!msg.text || msg.text.length === 0) ? (
-                <ThinkingPlaceholder />
+                <Indicators type={selectedModel === 'image-agent' ? 'image' : 'default'} />
             ) : (
-                <div className="text-[15px] md:text-[16px] leading-7 text-gray-800 dark:text-gray-200 markdown-body font-sans antialiased">
-                     <MarkdownRenderer content={msg.text} />
-                </div>
+                <>
+                    <div className="text-[15px] md:text-[16px] leading-7 text-gray-800 dark:text-gray-200 markdown-body font-sans antialiased">
+                         <MarkdownRenderer content={msg.text} />
+                    </div>
+                    {msg.isStreaming && isGeneratingImage && (
+                        <Indicators type="generating" />
+                    )}
+                </>
             )}
 
             {/* Generated Images */}
@@ -348,7 +337,7 @@ const MessageItem = ({
 };
 
 // --- Main MessageList Component ---
-const MessageList: React.FC<MessageListProps> = ({ messages, isThinking, onEdit, onReply, onSuggestionClick, minFooterHeight, user, language }) => {
+const MessageList: React.FC<MessageListProps> = ({ messages, isThinking, selectedModel, isGeneratingImage, onEdit, onReply, onSuggestionClick, minFooterHeight, user, language }) => {
     const virtuosoRef = useRef<VirtuosoHandle>(null);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editText, setEditText] = useState('');
@@ -552,6 +541,8 @@ const MessageList: React.FC<MessageListProps> = ({ messages, isThinking, onEdit,
                         selectedVoiceURI={selectedVoiceURI}
                         speechRate={speechRate}
                         showTTSSettingsId={showTTSSettingsId}
+                        selectedModel={selectedModel}
+                        isGeneratingImage={isGeneratingImage}
                         onSetEditText={setEditText}
                         onStartEditing={handleStartEditing}
                         onCancelEditing={handleCancelEditing}
