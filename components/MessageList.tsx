@@ -218,7 +218,7 @@ const MessageItem: React.FC<MessageItemProps> = ({
 
             <div className="flex items-center gap-2">
                 <span className="text-sm font-bold text-gray-900 dark:text-gray-100">Elora</span>
-                {msg.thinking && !msg.isStreaming && (
+                {msg.thinking && (
                     <button
                         onClick={() => setIsThinkingExpanded(!isThinkingExpanded)}
                         className="flex items-center gap-1.5 ml-2 px-2 py-1 rounded-full bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/20 transition-colors text-[10px] font-medium text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-transparent"
@@ -233,8 +233,8 @@ const MessageItem: React.FC<MessageItemProps> = ({
 
         {/* Thinking Block */}
         {msg.thinking && isThinkingExpanded && (
-            <div className="ml-0 md:ml-9 mb-4 p-4 bg-gray-50 dark:bg-[#1a1b1e] rounded-xl text-xs leading-relaxed text-gray-600 dark:text-gray-400 border-l-2 border-purple-500/50 animate-slide-down font-mono whitespace-pre-wrap shadow-inner">
-                {msg.thinking}
+            <div className="ml-0 md:ml-9 mb-4 p-4 bg-gray-50 dark:bg-[#1a1b1e] rounded-xl text-xs leading-relaxed text-gray-600 dark:text-gray-400 border-l-2 border-purple-500/50 animate-slide-down shadow-inner">
+                <MarkdownRenderer content={msg.thinking} />
             </div>
         )}
 

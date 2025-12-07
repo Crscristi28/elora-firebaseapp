@@ -92,8 +92,10 @@ async function determineModelFromIntent(ai: GoogleGenAI, lastMessage: string, hi
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
             config: {
                 responseMimeType: 'application/json',
-                temperature: 0.2,
-                maxOutputTokens: 100
+                temperature: 0,
+                topK: 1,
+                topP: 1.0,
+                maxOutputTokens: 150
             }
         });
 
@@ -467,14 +469,12 @@ export const streamChat = onRequest(
 
               const imageParts = imageResponse.candidates?.[0]?.content?.parts || [];
               for (const imgPart of imageParts) {
+                // Only send images, ignore text from image model (agent already writes text)
                 if (imgPart.inlineData && imgPart.inlineData.data) {
                   const mimeType = imgPart.inlineData.mimeType || 'image/png';
                   const base64Data = imgPart.inlineData.data.replace(/\r?\n|\r/g, '');
                   // Include aspectRatio so frontend can size skeleton correctly
                   res.write(`data: ${JSON.stringify({ image: { mimeType, data: base64Data, aspectRatio } })}\n\n`);
-                  if ((res as any).flush) (res as any).flush();
-                } else if (imgPart.text) {
-                  res.write(`data: ${JSON.stringify({ text: imgPart.text })}\n\n`);
                   if ((res as any).flush) (res as any).flush();
                 }
               }
@@ -506,13 +506,11 @@ export const streamChat = onRequest(
 
               const editParts = editResponse.candidates?.[0]?.content?.parts || [];
               for (const editPart of editParts) {
+                // Only send images, ignore text from image model (agent already writes text)
                 if (editPart.inlineData && editPart.inlineData.data) {
                   const mimeType = editPart.inlineData.mimeType || 'image/png';
                   const base64Data = editPart.inlineData.data.replace(/\r?\n|\r/g, '');
                   res.write(`data: ${JSON.stringify({ image: { mimeType, data: base64Data } })}\n\n`);
-                  if ((res as any).flush) (res as any).flush();
-                } else if (editPart.text) {
-                  res.write(`data: ${JSON.stringify({ text: editPart.text })}\n\n`);
                   if ((res as any).flush) (res as any).flush();
                 }
               }
