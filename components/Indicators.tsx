@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-export type IndicatorType = 'default' | 'image' | 'generating';
+export type IndicatorType = 'default' | 'image' | 'generating' | 'research';
 
 interface IndicatorsProps {
     type?: IndicatorType;
@@ -21,6 +21,17 @@ const Indicators = ({ type = 'default' }: IndicatorsProps) => {
             // Generating image (static, no timers)
             setText('Generating image...');
             return;
+        } else if (type === 'research') {
+            // Research mode: Deep researching... → Collecting data... → Philosophizing... → Preparing answer...
+            setText('Deep researching...');
+            const timer1 = setTimeout(() => setText('Collecting data...'), 2500);
+            const timer2 = setTimeout(() => setText('Philosophizing...'), 5000);
+            const timer3 = setTimeout(() => setText('Preparing answer...'), 7500);
+            return () => {
+                clearTimeout(timer1);
+                clearTimeout(timer2);
+                clearTimeout(timer3);
+            };
         } else {
             // Default: Just a sec... → Analyzing context... → Thinking...
             const timer1 = setTimeout(() => setText('Analyzing context...'), 2500);

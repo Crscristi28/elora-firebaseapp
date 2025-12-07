@@ -69,9 +69,10 @@ const uploadAttachmentToStorage = async (
 
     // Get download URL
     return await getDownloadURL(storageRef);
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.error("Upload failed:", e);
-    throw new Error(`Upload failed: ${e.message}`);
+    const errorMessage = e instanceof Error ? e.message : 'Unknown error';
+    throw new Error(`Upload failed: ${errorMessage}`);
   }
 };
 
@@ -200,7 +201,8 @@ const InputArea: React.FC<InputAreaProps> = ({ onSend, isLoading, selectedModel,
     recognition.lang = 'en-US';
     recognitionRef.current = recognition;
     recognition.onstart = () => setIsListening(true);
-    recognition.onresult = (event: any) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    recognition.onresult = (event: { results: { [index: number]: { [index: number]: { transcript: string } }; length: number } }) => {
       let transcript = '';
       for (let i = 0; i < event.results.length; i++) {
         transcript += event.results[i][0].transcript;
@@ -208,7 +210,7 @@ const InputArea: React.FC<InputAreaProps> = ({ onSend, isLoading, selectedModel,
       const separator = baseInputRef.current && !baseInputRef.current.endsWith(' ') ? ' ' : '';
       setInput(baseInputRef.current + separator + transcript);
     };
-    recognition.onerror = (event: any) => {
+    recognition.onerror = (event: { error: string }) => {
       console.error("Speech recognition error", event.error);
       setIsListening(false);
     };
@@ -249,7 +251,7 @@ const InputArea: React.FC<InputAreaProps> = ({ onSend, isLoading, selectedModel,
             updated.delete(attachmentIndex);
             return updated;
           });
-        } catch (err: any) {
+        } catch (err: unknown) {
           console.error("Failed to upload", att.name, err);
           setUploadingIndexes(prev => {
             const updated = new Set(prev);

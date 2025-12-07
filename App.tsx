@@ -6,7 +6,7 @@ import Sidebar from './components/Sidebar';
 import SettingsModal from './components/SettingsModal';
 import { streamChatResponse } from './services/geminiService';
 import { uploadGeneratedImage } from './services/transformService';
-import { ChevronDown, Zap, Brain, Menu, Image as ImageIcon, Check, Sparkles } from 'lucide-react';
+import { ChevronDown, Zap, Brain, Menu, Image as ImageIcon, Check, Sparkles, Cpu } from 'lucide-react';
 import { useAuth } from './hooks/useAuth';
 import { useFirestoreSync } from './hooks/useFirestoreSync';
 import { signInWithPopup, signOut } from 'firebase/auth';
@@ -56,6 +56,7 @@ const App: React.FC = () => {
   const [minFooterHeight, setMinFooterHeight] = useState<number>(100); // Default 100px
   const [routedModel, setRoutedModel] = useState<string | null>(null);
   const [isGeneratingImage, setIsGeneratingImage] = useState<boolean>(false);
+  const [currentMode, setCurrentMode] = useState<'image' | 'research' | null>(null);
 
   const inputAreaRef = useRef<HTMLDivElement>(null);
 
@@ -347,9 +348,14 @@ const App: React.FC = () => {
     streamSuggestionsRef.current = [];
     streamAttachmentsRef.current = [];
     isStreamingRef.current = true;
-    
-    // Determine which model to use (Image Mode Override)
-    const modelToUse = mode === 'image' ? ModelId.IMAGE_GEN : selectedModel;
+
+    // Set current mode for indicators
+    setCurrentMode(mode || null);
+
+    // Determine which model to use (Mode Overrides)
+    const modelToUse = mode === 'image' ? ModelId.IMAGE_GEN
+                     : mode === 'research' ? ModelId.RESEARCH
+                     : selectedModel;
     
     // 2. Start Animation Loop (Instant display - no char-by-char delay)
     const updateUiLoop = () => {
@@ -471,6 +477,7 @@ const App: React.FC = () => {
       isStreamingRef.current = false;
       setIsLoading(false); // Ensure loading is cleared even if no text chunks arrived
       setIsGeneratingImage(false); // Reset generating image state
+      setCurrentMode(null); // Reset mode after streaming
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
       if (dbDebounceTimerRef.current) clearTimeout(dbDebounceTimerRef.current);
 
@@ -488,19 +495,21 @@ const App: React.FC = () => {
       // Now safe to clear
       setStreamingMessage(null);
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Failed to generate response", error);
-      
+
       // Cleanup on error
       isStreamingRef.current = false;
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
       if (dbDebounceTimerRef.current) clearTimeout(dbDebounceTimerRef.current);
-      
-      setStreamingMessage(null); 
-      setIsLoading(false); 
-      
+
+      setStreamingMessage(null);
+      setIsLoading(false);
+      setCurrentMode(null);
+
+      const errorMessage = error instanceof Error ? error.message : "Something went wrong.";
       await updateMessageInDb(sessionId, newBotMessageId, {
-        text: error.message || "Something went wrong.",
+        text: errorMessage,
         error: true,
         isStreaming: false
       });
@@ -516,6 +525,7 @@ const App: React.FC = () => {
       case 'Sparkles': return 'bg-yellow-100 dark:bg-yellow-500/20 text-yellow-600 dark:text-yellow-400';
       case 'Zap': return 'bg-blue-100 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400';
       case 'Brain': return 'bg-purple-100 dark:bg-purple-500/20 text-purple-600 dark:text-purple-400';
+      case 'Cpu': return 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400';
       case 'Image': return 'bg-pink-100 dark:bg-pink-500/20 text-pink-600 dark:text-pink-400';
       default: return 'bg-gray-100 dark:bg-gray-500/20 text-gray-600 dark:text-gray-400';
     }
@@ -527,6 +537,7 @@ const App: React.FC = () => {
       case 'Sparkles': return <Sparkles size={20} />;
       case 'Zap': return <Zap size={20} />;
       case 'Brain': return <Brain size={20} />;
+      case 'Cpu': return <Cpu size={20} />;
       case 'Image': return <ImageIcon size={20} />;
       default: return <Zap size={20} />;
     }
@@ -538,6 +549,7 @@ const App: React.FC = () => {
       case 'Sparkles': return <Sparkles size={16} className="text-white" />;
       case 'Zap': return <Zap size={16} className="text-white" />;
       case 'Brain': return <Brain size={16} className="text-white" />;
+      case 'Cpu': return <Cpu size={16} className="text-white" />;
       case 'Image': return <ImageIcon size={16} className="text-white" />;
       default: return <Zap size={16} className="text-white" />;
     }
@@ -664,6 +676,7 @@ const App: React.FC = () => {
               isThinking={isLoading}
               selectedModel={routedModel || selectedModel}
               isGeneratingImage={isGeneratingImage}
+              currentMode={currentMode}
               onEdit={handleEditMessage}
               onReply={handleReply}
               onSuggestionClick={handleSuggestionClick}

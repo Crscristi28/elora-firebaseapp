@@ -12,7 +12,13 @@ interface MarkdownRendererProps {
   content: string;
 }
 
-const CodeBlock = ({ language, children, ...props }: any) => {
+interface CodeBlockProps {
+  language?: string;
+  children: React.ReactNode;
+  [key: string]: unknown;
+}
+
+const CodeBlock = ({ language, children, ...props }: CodeBlockProps) => {
   const [copied, setCopied] = useState(false);
   const isDark = document.documentElement.classList.contains('dark');
 
@@ -51,7 +57,13 @@ const CodeBlock = ({ language, children, ...props }: any) => {
   );
 };
 
-const ImageBlock = ({ src, alt, ...props }: any) => {
+interface ImageBlockProps {
+  src?: string;
+  alt?: string;
+  [key: string]: unknown;
+}
+
+const ImageBlock = ({ src, alt, ...props }: ImageBlockProps) => {
   return (
     <div className="relative group my-4 rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700/50 shadow-lg bg-gray-100 dark:bg-black/20 inline-block max-w-full">
       <img 
@@ -82,7 +94,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
         rehypePlugins={[rehypeKatex]}
         urlTransform={(value) => value} 
         components={{
-          code({ node, className, children, ...props }: any) {
+          code({ className, children, ...props }: { className?: string; children?: React.ReactNode }) {
             const match = /language-(\w+)/.exec(className || '');
             const hasNewline = String(children).includes('\n');
 
@@ -168,7 +180,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
             <h6 {...props} className="text-sm font-medium mb-1 text-gray-600 dark:text-gray-400 mt-3" />
          ),
          // Task list checkbox (GFM)
-         input: ({ node, checked, ...props }: any) => (
+         input: ({ checked }: { checked?: boolean }) => (
             <span className="inline-flex items-center mr-2">
                {checked ? (
                   <CheckSquare size={16} className="text-green-500 dark:text-green-400" />

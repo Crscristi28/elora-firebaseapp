@@ -8,9 +8,11 @@ export enum ModelId {
   AUTO = 'auto', // The Smart Router
   LITE = 'gemini-2.5-flash-lite', // The Router/Suggester
   FLASH = 'gemini-2.5-flash', // The Standard Chat
-  PRO = 'gemini-3-pro-preview', // The Brain
+  PRO = 'gemini-3-pro-preview', // The Brain (low limits)
+  PRO_25 = 'gemini-2.5-pro', // Stable Pro (high limits)
   IMAGE_GEN = 'gemini-2.5-flash-image', // The Artist
   IMAGE_AGENT = 'image-agent', // Flash + Image Tool
+  RESEARCH = 'research', // Deep Research (maps to gemini-2.5-pro on backend)
 }
 
 export interface Attachment {
@@ -85,6 +87,12 @@ export const MODELS: ModelConfig[] = [
     icon: 'Brain',
   },
   {
+    id: ModelId.PRO_25,
+    name: 'Elora Pro 2.5',
+    description: 'Stable Pro with high limits',
+    icon: 'Cpu',
+  },
+  {
     id: ModelId.IMAGE_AGENT,
     name: 'Elora Artist',
     description: 'Creates images with context awareness',
@@ -125,4 +133,97 @@ export interface AppSettings {
   language: string;
   showSuggestions: boolean;
   userName?: string; // Added user alias
+}
+
+// --- Gemini API Types ---
+
+export interface GeminiContentPart {
+  text?: string;
+  inlineData?: { mimeType: string; data: string };
+  executableCode?: { code: string; language: string };
+  codeExecutionResult?: { output: string };
+}
+
+export interface GeminiGroundingChunk {
+  web?: { uri: string; title: string };
+}
+
+export interface GeminiCandidate {
+  content?: {
+    parts?: GeminiContentPart[];
+  };
+  groundingMetadata?: {
+    groundingChunks?: GeminiGroundingChunk[];
+  };
+}
+
+export interface GeminiResponse {
+  text?: string;
+  response?: {
+    candidates?: GeminiCandidate[];
+    usageMetadata?: {
+      promptTokenCount: number;
+      candidatesTokenCount: number;
+    };
+  };
+}
+
+// --- Tool Types ---
+
+export interface FunctionParameter {
+  type: string;
+  description: string;
+  enum?: string[];
+}
+
+export interface FunctionDeclaration {
+  name: string;
+  description: string;
+  parameters: {
+    type: string;
+    properties: Record<string, FunctionParameter>;
+    required: string[];
+  };
+}
+
+export interface GeminiTool {
+  googleSearch?: Record<string, never>;
+  codeExecution?: Record<string, never>;
+  urlContext?: Record<string, never>;
+  functionDeclarations?: FunctionDeclaration[];
+}
+
+// --- Component Types ---
+
+export interface SettingsOption {
+  value: string;
+  label: string;
+}
+
+export interface VoiceOption {
+  voiceURI: string;
+  name: string;
+  lang: string;
+}
+
+// --- Speech Recognition Types ---
+
+export interface SpeechRecognitionResult {
+  transcript: string;
+  confidence: number;
+}
+
+export interface SpeechRecognitionEvent {
+  results: {
+    [index: number]: {
+      [index: number]: SpeechRecognitionResult;
+    };
+    length: number;
+  };
+  resultIndex: number;
+}
+
+export interface SpeechRecognitionErrorEvent {
+  error: string;
+  message?: string;
 }

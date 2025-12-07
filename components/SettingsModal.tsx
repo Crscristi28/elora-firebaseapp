@@ -94,18 +94,18 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
 
   // --- Helper Components ---
 
-  const MenuItem = ({ 
-    id, 
-    icon: Icon, 
-    colorClass, 
-    label, 
-    subLabel 
-  }: { 
-    id: SettingsTab, 
-    icon: any, 
-    colorClass: string, 
-    label: string, 
-    subLabel?: string 
+  const MenuItem = ({
+    id,
+    icon: Icon,
+    colorClass,
+    label,
+    subLabel
+  }: {
+    id: SettingsTab,
+    icon: React.FC<{ size?: number; className?: string }>,
+    colorClass: string,
+    label: string,
+    subLabel?: string
   }) => {
     const isActive = activeTab === id;
     return (
@@ -146,7 +146,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
     danger = false,
     info
   }: {
-    icon?: any,
+    icon?: React.FC<{ size?: number; className?: string }>,
     label: string,
     children: React.ReactNode,
     danger?: boolean,
@@ -362,7 +362,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                             <div className="bg-white dark:bg-[#1e1f20] p-4 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm">
                                 <label className="text-xs font-bold text-gray-500 uppercase mb-3 block">{t('labelTone')}</label>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                    {['normal', 'concise', 'explanatory', 'formal', 'learning'].map((tone: any) => (
+                                    {(['normal', 'concise', 'explanatory', 'formal', 'learning'] as ToneStyle[]).map((tone) => (
                                         <button
                                             key={tone}
                                             onClick={() => onUpdatePromptSettings({ ...promptSettings, style: tone })}
@@ -417,17 +417,17 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                         <div className="bg-white dark:bg-[#1e1f20] rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
                             <SettingRow label={t('appearance')} icon={Moon}>
                                 <div className="flex bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
-                                    {[
-                                      { val: 'system', icon: Monitor },
-                                      { val: 'dark', icon: Moon },
-                                      { val: 'light', icon: Sun },
-                                    ].map((opt: any) => (
+                                    {([
+                                      { val: 'system' as const, icon: Monitor },
+                                      { val: 'dark' as const, icon: Moon },
+                                      { val: 'light' as const, icon: Sun },
+                                    ]).map((opt) => (
                                       <button
                                         key={opt.val}
                                         onClick={() => onUpdateSettings({...settings, theme: opt.val})}
                                         className={`p-1.5 rounded-md transition-all ${
-                                          settings.theme === opt.val 
-                                            ? 'bg-white dark:bg-gray-600 shadow-sm text-blue-600 dark:text-white' 
+                                          settings.theme === opt.val
+                                            ? 'bg-white dark:bg-gray-600 shadow-sm text-blue-600 dark:text-white'
                                             : 'text-gray-400'
                                         }`}
                                       >
@@ -478,7 +478,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                                         className="w-full bg-gray-50 dark:bg-[#161719] border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 text-sm appearance-none outline-none focus:border-blue-500 text-gray-900 dark:text-white"
                                     >
                                         <option value="">{t('optSystemDefault')}</option>
-                                        {voices.map((v: any) => (
+                                        {voices.map((v: SpeechSynthesisVoice) => (
                                             <option key={v.voiceURI} value={v.voiceURI}>{v.name} ({v.lang})</option>
                                         ))}
                                     </select>

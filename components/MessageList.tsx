@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
-import { ChatMessage, Role, UserProfile } from '../types';
+import { ChatMessage, Role, UserProfile, Attachment, Source } from '../types';
 import MarkdownRenderer from './MarkdownRenderer';
 import Indicators from './Indicators';
 import { 
@@ -15,6 +15,7 @@ interface MessageListProps {
   isThinking: boolean;
   selectedModel?: string;
   isGeneratingImage?: boolean;
+  currentMode?: 'image' | 'research' | null;
   onEdit?: (id: string, newText: string) => void;
   onReply?: (msg: ChatMessage) => void;
   onSuggestionClick?: (text: string) => void;
@@ -45,8 +46,36 @@ const formatFileSize = (base64: string) => {
   }
 };
 
+// --- MessageItem Props Interface ---
+interface MessageItemProps {
+  msg: ChatMessage;
+  editingId: string | null;
+  editText: string;
+  speakingId: string | null;
+  copiedId: string | null;
+  voices: SpeechSynthesisVoice[];
+  selectedVoiceURI: string;
+  speechRate: number;
+  showTTSSettingsId: string | null;
+  selectedModel?: string;
+  isGeneratingImage?: boolean;
+  currentMode?: 'image' | 'research' | null;
+  onSetEditText: (text: string) => void;
+  onStartEditing: (msg: ChatMessage) => void;
+  onCancelEditing: () => void;
+  onSaveEdit: (id: string) => void;
+  onHandleSpeak: (text: string, id: string) => void;
+  onHandleCopy: (text: string, id: string) => void;
+  onHandleStopSpeak: () => void;
+  onHandleReply: (msg: ChatMessage) => void;
+  onHandleShare: (text: string) => void;
+  onToggleTTSSettings: (id: string | null) => void;
+  onSaveTTSSettings: (voiceURI: string, rate: number) => void;
+  onSuggestionClick?: (text: string) => void;
+}
+
 // --- MessageItem Component ---
-const MessageItem = ({
+const MessageItem: React.FC<MessageItemProps> = ({
   msg,
   editingId,
   editText,
@@ -58,6 +87,7 @@ const MessageItem = ({
   showTTSSettingsId,
   selectedModel,
   isGeneratingImage,
+  currentMode,
   onSetEditText,
   onStartEditing,
   onCancelEditing,
@@ -70,7 +100,7 @@ const MessageItem = ({
   onToggleTTSSettings,
   onSaveTTSSettings,
   onSuggestionClick
-}: any) => {
+}) => {
   
   const [isThinkingExpanded, setIsThinkingExpanded] = useState(false);
   const isUser = msg.role === Role.USER;
@@ -97,7 +127,7 @@ const MessageItem = ({
                         </div>
                     ) : (
                         <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide max-w-full mask-fade-right">
-                            {msg.attachments.map((att: any, idx: number) => (
+                            {msg.attachments.map((att: Attachment, idx: number) => (
                                 <div key={idx} className="relative flex-shrink-0 group/att">
                                     {att.mimeType.startsWith('image/') ? (
                                         <div className="relative h-24 w-24 rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-[#1a1b1e]">
@@ -211,7 +241,11 @@ const MessageItem = ({
         {/* Body */}
         <div className="pl-0 md:pl-9 w-full">
             {msg.isStreaming && (!msg.text || msg.text.length === 0) ? (
-                <Indicators type={selectedModel === 'image-agent' ? 'image' : 'default'} />
+                <Indicators type={
+                    selectedModel === 'image-agent' ? 'image'
+                    : currentMode === 'research' ? 'research'
+                    : 'default'
+                } />
             ) : (
                 <>
                     <div className="text-[15px] md:text-[16px] leading-7 text-gray-800 dark:text-gray-200 markdown-body font-sans antialiased">
@@ -226,7 +260,7 @@ const MessageItem = ({
             {/* Generated Images */}
             {msg.attachments && msg.attachments.length > 0 && (
                 <div className="mt-4 flex flex-wrap gap-3">
-                    {msg.attachments.map((att: any, idx: number) => {
+                    {msg.attachments.map((att: Attachment, idx: number) => {
                         if (!att.mimeType?.startsWith('image/')) return null;
 
                         // Convert "16:9" to "16/9" for CSS aspect-ratio
@@ -294,7 +328,7 @@ const MessageItem = ({
                              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Sources</span>
                         </div>
                         <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide mask-fade-right w-full">
-                            {msg.sources.map((source: any, idx: number) => (
+                            {msg.sources.map((source: Source, idx: number) => (
                                 <a key={idx} href={source.url} target="_blank" rel="noopener noreferrer" className="flex-shrink-0 flex flex-col justify-center px-3 py-2 w-[160px] bg-white dark:bg-[#1a1b1e] border border-gray-200 dark:border-gray-800 hover:border-blue-400 dark:hover:border-blue-500/50 rounded-xl transition-all group/source no-underline h-[52px]" title={source.title}>
                                     <span className="text-[11px] font-medium text-gray-700 dark:text-gray-200 truncate w-full block">{source.title}</span>
                                     <span className="text-[9px] text-gray-400 truncate w-full block mt-0.5 opacity-70 group-hover/source:opacity-100">{new URL(source.url).hostname.replace('www.', '')}</span>
@@ -318,7 +352,7 @@ const MessageItem = ({
                                   <div className="absolute bottom-full left-0 mb-2 w-64 bg-white dark:bg-[#1e1f20] border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl p-3 z-10 animate-fade-in">
                                       <div className="flex justify-between items-center mb-2"><span className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Voice Settings</span><button onClick={() => onToggleTTSSettings(null)} className="text-gray-500 hover:text-gray-900 dark:hover:text-white"><X size={12}/></button></div>
                                       <div className="space-y-3">
-                                          <div><label className="text-xs text-gray-600 dark:text-gray-300 mb-1 block">Voice</label><select value={selectedVoiceURI} onChange={(e) => onSaveTTSSettings(e.target.value, speechRate)} className="w-full bg-gray-50 dark:bg-[#2d2e33] border border-gray-200 dark:border-gray-700 rounded px-2 py-1 text-xs text-gray-900 dark:text-gray-200 focus:outline-none">{voices.map((v: any) => (<option key={v.voiceURI} value={v.voiceURI}>{v.name} ({v.lang})</option>))}</select></div>
+                                          <div><label className="text-xs text-gray-600 dark:text-gray-300 mb-1 block">Voice</label><select value={selectedVoiceURI} onChange={(e) => onSaveTTSSettings(e.target.value, speechRate)} className="w-full bg-gray-50 dark:bg-[#2d2e33] border border-gray-200 dark:border-gray-700 rounded px-2 py-1 text-xs text-gray-900 dark:text-gray-200 focus:outline-none">{voices.map((v: SpeechSynthesisVoice) => (<option key={v.voiceURI} value={v.voiceURI}>{v.name} ({v.lang})</option>))}</select></div>
                                           <div><div className="flex justify-between text-xs mb-1 text-gray-600 dark:text-gray-300"><span>Speed</span><span className="font-medium text-blue-600 dark:text-blue-400">{speechRate}x</span></div><input type="range" min="0.5" max="2" step="0.1" value={speechRate} onChange={(e) => onSaveTTSSettings(selectedVoiceURI, parseFloat(e.target.value))} className="w-full h-1.5 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-500"/></div>
                                       </div>
                                   </div>
@@ -337,7 +371,7 @@ const MessageItem = ({
 };
 
 // --- Main MessageList Component ---
-const MessageList: React.FC<MessageListProps> = ({ messages, isThinking, selectedModel, isGeneratingImage, onEdit, onReply, onSuggestionClick, minFooterHeight, user, language }) => {
+const MessageList: React.FC<MessageListProps> = ({ messages, isThinking, selectedModel, isGeneratingImage, currentMode, onEdit, onReply, onSuggestionClick, minFooterHeight, user, language }) => {
     const virtuosoRef = useRef<VirtuosoHandle>(null);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editText, setEditText] = useState('');
@@ -543,6 +577,7 @@ const MessageList: React.FC<MessageListProps> = ({ messages, isThinking, selecte
                         showTTSSettingsId={showTTSSettingsId}
                         selectedModel={selectedModel}
                         isGeneratingImage={isGeneratingImage}
+                        currentMode={currentMode}
                         onSetEditText={setEditText}
                         onStartEditing={handleStartEditing}
                         onCancelEditing={handleCancelEditing}

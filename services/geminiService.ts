@@ -44,6 +44,9 @@ export const streamChatResponse = async (
         history: history.map(msg => ({
           role: msg.role,
           text: msg.text,
+          imageUrls: msg.attachments
+            ?.filter(att => att.mimeType?.startsWith('image/') && att.storageUrl)
+            .map(att => att.storageUrl),
         })),
         newMessage,
         attachments,
@@ -148,10 +151,10 @@ export const streamChatResponse = async (
 
     return fullText;
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Gemini API Error:", error);
 
-    let errorMessage = error.message || "Unknown error occurred";
+    let errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
 
     // Try to parse inner JSON error message if it exists
     try {

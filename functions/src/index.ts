@@ -1,11 +1,11 @@
 import { onRequest } from "firebase-functions/v2/https";
-import { defineSecret } from "firebase-functions/params";
 import { GoogleGenAI, Part, Content, ThinkingConfig, ThinkingLevel, Type } from "@google/genai";
 import * as admin from "firebase-admin";
 import { SUGGESTION_PROMPT } from "./prompts/suggestion";
 import { ROUTER_PROMPT } from "./prompts/router";
 import { FLASH_SYSTEM_PROMPT } from "./prompts/flash";
 import { IMAGE_AGENT_SYSTEM_PROMPT } from "./prompts/image-agent";
+import { RESEARCH_SYSTEM_PROMPT } from "./prompts/research";
 
 admin.initializeApp();
 
@@ -14,11 +14,13 @@ interface ChatAttachment {
     mimeType: string;
     data: string;
     name?: string;
+    storageUrl?: string;
 }
 
 interface HistoryMessage {
     role: 'user' | 'model';
     text: string;
+    imageUrls?: string[];
 }
 
 interface ChatSettings {
@@ -35,7 +37,7 @@ interface ChatRequest {
     history?: HistoryMessage[];
     newMessage?: string;
     attachments?: ChatAttachment[];
-    modelId?: 'gemini-2.5-flash' | 'gemini-3-pro-preview' | 'gemini-2.5-flash-lite' | 'gemini-2.5-flash-image' | 'auto' | 'image-agent';
+    modelId?: 'gemini-2.5-flash' | 'gemini-3-pro-preview' | 'gemini-2.5-pro' | 'gemini-2.5-flash-lite' | 'gemini-2.5-flash-image' | 'auto' | 'image-agent' | 'research';
     settings?: ChatSettings;
 }
 
@@ -44,16 +46,22 @@ interface RouterDecision {
     reasoning: string;
 }
 
-// Define secret for Gemini API key
-const geminiApiKey = defineSecret("GEMINI_API_KEY");
-
-// Initialize Gemini with API key from Secret Manager
+// API Key instance (chat, router, suggestions, generateImage - has code execution)
 const getAI = () => {
-  const apiKey = geminiApiKey.value();
+  const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    throw new Error("GEMINI_API_KEY secret not configured");
+    throw new Error("GEMINI_API_KEY not configured");
   }
   return new GoogleGenAI({ apiKey });
+};
+
+// Vertex AI instance (editImage only - supports HTTP URL in fileUri)
+const getVertexAI = () => {
+  return new GoogleGenAI({
+    vertexai: true,
+    project: "elenor-57bde",
+    location: "global"
+  });
 };
 
 // Helper: Check if MIME type is supported by inlineData (Images, PDF, Audio, Video)
@@ -79,10 +87,14 @@ async function determineModelFromIntent(ai: GoogleGenAI, lastMessage: string, hi
         User Request: "${lastMessage}"
         `;
 
-        const result: any = await ai.models.generateContent({
+        const result = await ai.models.generateContent({
             model: "gemini-2.5-flash-lite",
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            config: { responseMimeType: 'application/json' }
+            config: {
+                responseMimeType: 'application/json',
+                temperature: 0.2,
+                maxOutputTokens: 100
+            }
         });
 
         const text = result.text;
@@ -99,10 +111,10 @@ async function determineModelFromIntent(ai: GoogleGenAI, lastMessage: string, hi
  */
 export const streamChat = onRequest(
   {
-    secrets: [geminiApiKey],
     timeoutSeconds: 540,
     memory: "512MiB",
     cors: true,
+    secrets: ["GEMINI_API_KEY"],
   },
   async (req, res) => {
     // CORS headers
@@ -135,14 +147,14 @@ export const streamChat = onRequest(
       res.setHeader("X-Accel-Buffering", "no"); // Disable nginx buffering
       res.flushHeaders(); // Flush headers immediately to start streaming
 
-      const ai = getAI();
-
       // --- ROUTER LOGIC ---
       let selectedModelId: string | undefined = modelId;
 
       if (modelId === 'auto') {
           try {
-             const decision = await determineModelFromIntent(ai, newMessage || "User sent attachment", history || []);
+             // Router uses Vertex AI (Flash Lite)
+             const routerAI = getVertexAI();
+             const decision = await determineModelFromIntent(routerAI, newMessage || "User sent attachment", history || []);
              selectedModelId = decision.targetModel;
              console.log(`[Auto-Router] Routed to ${selectedModelId}. Reason: ${decision.reasoning}`);
 
@@ -190,9 +202,25 @@ export const streamChat = onRequest(
         parts.push({ text: newMessage });
       }
 
-      // Convert history
+      // Model checks for history limiting (must be before contents)
+      const isImageGen = selectedModelId === "gemini-2.5-flash-image";
+      const isResearch = selectedModelId === "research";
+
+      // Map 'research' to actual model ID
+      if (isResearch) {
+          selectedModelId = "gemini-2.5-pro";
+      }
+
+      // Limit history for expensive/specialized models (save tokens & costs)
+      const limitedHistory = isImageGen
+        ? (history || []).slice(-1)   // Image mode: last 1 message
+        : isResearch
+        ? (history || []).slice(-2)   // Research mode: last 2 messages
+        : (history || []);            // Others: full history
+
+      // Convert history (clean - no image URLs, saves tokens for non-image models)
       const contents: Content[] = [
-        ...(history || []).map((msg: HistoryMessage) => ({
+        ...limitedHistory.map((msg: HistoryMessage) => ({
           role: msg.role,
           parts: [{ text: msg.text }],
         })),
@@ -214,6 +242,10 @@ export const streamChat = onRequest(
       // Model Type Checks (Use selectedModelId)
       const isFlash = selectedModelId === "gemini-2.5-flash";
       const isPro = selectedModelId === "gemini-3-pro-preview";
+      const isPro25 = selectedModelId === "gemini-2.5-pro" && !isResearch; // PRO_25 manual selection (isResearch is already checked before model ID mapping)
+
+      // Log model selection for debugging
+      console.log(`[MODEL] Selected: ${selectedModelId} | isFlash: ${isFlash} | isPro: ${isPro} | isPro25: ${isPro25} | isResearch: ${isResearch}`);
 
       // Add model-specific system prompts
       if (isFlash) {
@@ -221,9 +253,9 @@ export const streamChat = onRequest(
               ? `${FLASH_SYSTEM_PROMPT}\n\n${systemInstruction}`
               : FLASH_SYSTEM_PROMPT;
       }
+      // Note: Research has its own block with RESEARCH_SYSTEM_PROMPT
 
       // Other Model Type Checks
-      const isImageGen = selectedModelId === "gemini-2.5-flash-image";
       const isImageAgent = selectedModelId === "image-agent";
       const isLite = selectedModelId === "gemini-2.5-flash-lite";
 
@@ -254,8 +286,10 @@ export const streamChat = onRequest(
             }
         }
 
-        const response: any = await ai.models.generateContent({
-          model: selectedModelId!, // Use routed model
+        // Image generation uses Vertex AI
+        const imageGenAI = getVertexAI();
+        const response = await imageGenAI.models.generateContent({
+          model: selectedModelId!,
           contents,
           config: {
             responseModalities: ['TEXT', 'IMAGE'],
@@ -267,7 +301,7 @@ export const streamChat = onRequest(
 
         if (response.candidates?.[0]?.content?.parts) {
           for (const part of response.candidates[0].content.parts) {
-            if (part.inlineData) {
+            if (part.inlineData && part.inlineData.data) {
               const mimeType = part.inlineData.mimeType || 'image/png';
               const base64Data = part.inlineData.data.replace(/\r?\n|\r/g, '');
               // Send as image event (same format as code execution graphs)
@@ -293,36 +327,103 @@ export const streamChat = onRequest(
       } else if (isImageAgent) {
         // IMAGE AGENT: Flash with generateImage tool
         const generateImageTool = {
-          functionDeclarations: [{
-            name: "generateImage",
-            description: "Generate an image based on a text prompt",
-            parameters: {
-              type: Type.OBJECT,
-              properties: {
-                prompt: {
-                  type: Type.STRING,
-                  description: "Detailed description of the image to generate"
-                },
-                aspectRatio: {
-                  type: Type.STRING,
-                  enum: ["1:1", "16:9", "9:16", "4:3", "3:4"],
-                  description: "Aspect ratio for the image"
-                },
-                style: {
-                  type: Type.STRING,
-                  description: "Optional style modifier (e.g. photorealistic, anime, sketch)"
-                }
+          name: "generateImage",
+          description: "Generate a NEW image based on a text prompt. Use this when user wants to create a completely new image.",
+          parameters: {
+            type: Type.OBJECT,
+            properties: {
+              prompt: {
+                type: Type.STRING,
+                description: "Detailed description of the image to generate"
               },
-              required: ["prompt"]
-            }
-          }]
+              aspectRatio: {
+                type: Type.STRING,
+                enum: ["1:1", "16:9", "9:16", "4:3", "3:4"],
+                description: "Aspect ratio for the image"
+              },
+              style: {
+                type: Type.STRING,
+                description: "Optional style modifier (e.g. photorealistic, anime, sketch)"
+              }
+            },
+            required: ["prompt"]
+          }
         };
 
-        const agentResult = await ai.models.generateContent({
+        const editImageTool = {
+          name: "editImage",
+          description: "Edit an EXISTING image using natural language instructions. Use this when user wants to modify, change, or transform an image they uploaded or you previously generated.",
+          parameters: {
+            type: Type.OBJECT,
+            properties: {
+              imageUrl: {
+                type: Type.STRING,
+                description: "The Firebase Storage URL of the image to edit"
+              },
+              prompt: {
+                type: Type.STRING,
+                description: "Clear instruction describing what changes to make to the image"
+              }
+            },
+            required: ["imageUrl", "prompt"]
+          }
+        };
+
+        const imageAgentTools = {
+          functionDeclarations: [generateImageTool, editImageTool]
+        };
+
+        // Build special contents for image-agent with image URLs in each message
+        // Start with history messages (add URLs to each)
+        const historyWithUrls = (history || []).map((msg: HistoryMessage) => {
+          let msgText = msg.text;
+          if (msg.imageUrls && msg.imageUrls.length > 0) {
+            const imageRefs = msg.imageUrls.map((url, idx) => `${idx + 1}. ${url}`).join('\n');
+            msgText += `\n\n[Images in this message:\n${imageRefs}]`;
+          }
+          return {
+            role: msg.role,
+            parts: [{ text: msgText }],
+          };
+        });
+
+        // Copy current user message from contents (last item)
+        const currentUserMsg = contents[contents.length - 1];
+        const imageAgentContents: Content[] = [
+          ...historyWithUrls,
+          { role: currentUserMsg.role, parts: currentUserMsg.parts ? [...currentUserMsg.parts] : [] },
+        ];
+
+        // Add current attachment URLs to the last user message
+        const currentImageUrls: string[] = [];
+        if (attachments) {
+          attachments.forEach(att => {
+            if (att.storageUrl && att.mimeType?.startsWith('image/')) {
+              currentImageUrls.push(att.storageUrl);
+            }
+          });
+        }
+
+        if (currentImageUrls.length > 0) {
+          const urlContext = `\n\n[Images attached to this message:\n${currentImageUrls.map((url, idx) => `${idx + 1}. ${url}`).join('\n')}]`;
+          const lastMsg = imageAgentContents[imageAgentContents.length - 1];
+          if (lastMsg && lastMsg.parts) {
+            const textPartIndex = lastMsg.parts.findIndex(p => p.text);
+            if (textPartIndex >= 0) {
+              (lastMsg.parts[textPartIndex] as any).text += urlContext;
+            } else {
+              lastMsg.parts.push({ text: urlContext });
+            }
+          }
+        }
+
+        // Image agent uses Vertex AI (Flash)
+        const imageAgentAI = getVertexAI();
+        const agentResult = await imageAgentAI.models.generateContent({
           model: "gemini-2.5-flash",
-          contents,
+          contents: imageAgentContents,
           config: {
-            tools: [generateImageTool],
+            tools: [imageAgentTools],
             systemInstruction: IMAGE_AGENT_SYSTEM_PROMPT,
             thinkingConfig: {
               thinkingBudget: 0
@@ -353,8 +454,9 @@ export const streamChat = onRequest(
               res.write(`data: ${JSON.stringify({ generatingImage: true })}\n\n`);
               if ((res as any).flush) (res as any).flush();
 
-              // Call the image model
-              const imageResponse: any = await ai.models.generateContent({
+              // Call the image model (Vertex AI)
+              const generateImageAI = getVertexAI();
+              const imageResponse = await generateImageAI.models.generateContent({
                 model: "gemini-2.5-flash-image",
                 contents: [{ role: "user", parts: [{ text: finalPrompt }] }],
                 config: {
@@ -365,7 +467,7 @@ export const streamChat = onRequest(
 
               const imageParts = imageResponse.candidates?.[0]?.content?.parts || [];
               for (const imgPart of imageParts) {
-                if (imgPart.inlineData) {
+                if (imgPart.inlineData && imgPart.inlineData.data) {
                   const mimeType = imgPart.inlineData.mimeType || 'image/png';
                   const base64Data = imgPart.inlineData.data.replace(/\r?\n|\r/g, '');
                   // Include aspectRatio so frontend can size skeleton correctly
@@ -376,11 +478,134 @@ export const streamChat = onRequest(
                   if ((res as any).flush) (res as any).flush();
                 }
               }
+            } else if (name === "editImage") {
+              const imageUrl = args.imageUrl;
+              const editPrompt = args.prompt;
+
+              console.log(`[ImageAgent] Editing image: ${imageUrl}`);
+
+              // Notify frontend that image editing is starting
+              res.write(`data: ${JSON.stringify({ generatingImage: true })}\n\n`);
+              if ((res as any).flush) (res as any).flush();
+
+              // Call the image model with existing image (Vertex AI for HTTP URL support)
+              const vertexAI = getVertexAI();
+              const editResponse = await vertexAI.models.generateContent({
+                model: "gemini-2.5-flash-image",
+                contents: [{
+                  role: "user",
+                  parts: [
+                    { fileData: { fileUri: imageUrl, mimeType: "image/png" } },
+                    { text: `${editPrompt}. Keep original aspect ratio and orientation.` }
+                  ]
+                }],
+                config: {
+                  responseModalities: ['TEXT', 'IMAGE']
+                }
+              });
+
+              const editParts = editResponse.candidates?.[0]?.content?.parts || [];
+              for (const editPart of editParts) {
+                if (editPart.inlineData && editPart.inlineData.data) {
+                  const mimeType = editPart.inlineData.mimeType || 'image/png';
+                  const base64Data = editPart.inlineData.data.replace(/\r?\n|\r/g, '');
+                  res.write(`data: ${JSON.stringify({ image: { mimeType, data: base64Data } })}\n\n`);
+                  if ((res as any).flush) (res as any).flush();
+                } else if (editPart.text) {
+                  res.write(`data: ${JSON.stringify({ text: editPart.text })}\n\n`);
+                  if ((res as any).flush) (res as any).flush();
+                }
+              }
             }
           } else if (part.text) {
             res.write(`data: ${JSON.stringify({ text: part.text })}\n\n`);
             if ((res as any).flush) (res as any).flush();
           }
+        }
+
+        res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+        if ((res as any).flush) (res as any).flush();
+        res.end();
+        return;
+      } else if (isResearch) {
+        // RESEARCH MODE: Separate block with API Key instance
+        const researchAI = getAI();
+
+        let fullResponseText = "";
+
+        const result = await researchAI.models.generateContentStream({
+          model: "gemini-2.5-pro",
+          contents,
+          config: {
+            tools: [
+              { googleSearch: {} },
+              { urlContext: {} }
+            ],
+            thinkingConfig: {
+              includeThoughts: true,
+              thinkingBudget: 16384
+            },
+            temperature: 1.0,
+            topP: 0.95,
+            maxOutputTokens: 65536,
+            systemInstruction: RESEARCH_SYSTEM_PROMPT,
+          }
+        });
+
+        let sentMetadata = false;
+
+        for await (const chunk of result) {
+          const candidates = (chunk as any).candidates;
+          if (candidates && candidates.length > 0) {
+            const parts = candidates[0].content?.parts;
+            if (parts) {
+              for (const part of parts) {
+                // Thinking
+                const isThought = (part as any).thought === true;
+                if (isThought && part.text) {
+                  res.write(`data: ${JSON.stringify({ thinking: part.text })}\n\n`);
+                  if ((res as any).flush) (res as any).flush();
+                } else if (part.text) {
+                  fullResponseText += part.text;
+                  res.write(`data: ${JSON.stringify({ text: part.text })}\n\n`);
+                  if ((res as any).flush) (res as any).flush();
+                }
+              }
+            }
+          } else {
+            const text = chunk.text;
+            if (text) {
+              fullResponseText += text;
+              res.write(`data: ${JSON.stringify({ text })}\n\n`);
+              if ((res as any).flush) (res as any).flush();
+            }
+          }
+
+          // Grounding metadata (sources)
+          let metadata = (chunk as any).groundingMetadata;
+          if (!metadata) {
+            metadata = (chunk as any).candidates?.[0]?.groundingMetadata;
+          }
+          if (metadata && !sentMetadata) {
+            if (metadata.groundingChunks) {
+              const sources = metadata.groundingChunks
+                .map((c: { web?: { title?: string; uri: string } }) => {
+                  if (c.web) {
+                    return { title: c.web.title || "Web Source", url: c.web.uri };
+                  }
+                  return null;
+                })
+                .filter((s: { title: string; url: string } | null): s is { title: string; url: string } => s !== null);
+
+              if (sources.length > 0) {
+                res.write(`data: ${JSON.stringify({ sources })}\n\n`);
+                if ((res as any).flush) (res as any).flush();
+                sentMetadata = true;
+              }
+            }
+          }
+
+          if ((res as any).flush) (res as any).flush();
         }
 
         res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
@@ -400,9 +625,14 @@ export const streamChat = onRequest(
                     includeThoughts: true,
                     thinkingLevel: ThinkingLevel.LOW
                 };
+            } else if (isPro25) {
+                // PRO_25 manual selection: standard thinking
+                thinkingConfig = {
+                    includeThoughts: true,
+                    thinkingBudget: 4096
+                };
             } else {
                 // Gemini 2.5 Flash: uses thinkingBudget
-                // Note: includeThoughts must be true when thinkingBudget > 0
                 thinkingConfig = {
                     includeThoughts: true,
                     thinkingBudget: 1024
@@ -410,8 +640,11 @@ export const streamChat = onRequest(
             }
         }
 
+        // Log thinking config
+        console.log(`[THINKING] Config:`, JSON.stringify(thinkingConfig));
+
         // Configure Tools based on model
-        const tools: any[] = isPro
+        const tools = isPro || isPro25
             ? [
                 { googleSearch: {} },
                 { codeExecution: {} },
@@ -423,7 +656,11 @@ export const streamChat = onRequest(
         console.log(`[DEBUG] Tools config:`, JSON.stringify(tools));
         console.log(`[DEBUG] ThinkingConfig:`, JSON.stringify(thinkingConfig));
 
-        const result = await ai.models.generateContentStream({
+        // Pro models use API Key (for code execution), others use Vertex AI
+        const chatAI = (isPro || isPro25) ? getAI() : getVertexAI();
+        console.log(`[DEBUG] Using: ${(isPro || isPro25) ? 'API Key' : 'Vertex AI'}`);
+
+        const result = await chatAI.models.generateContentStream({
           model: selectedModelId || "gemini-2.5-flash",
           contents,
           config: {
@@ -532,13 +769,13 @@ export const streamChat = onRequest(
           if (metadata && !sentMetadata) {
             if (metadata.groundingChunks) {
                const sources = metadata.groundingChunks
-                 .map((c: any) => {
+                 .map((c: { web?: { title?: string; uri: string } }) => {
                     if (c.web) {
                         return { title: c.web.title || "Web Source", url: c.web.uri };
                     }
                     return null;
                  })
-                 .filter((s: any) => s !== null);
+                 .filter((s: { title: string; url: string } | null): s is { title: string; url: string } => s !== null);
 
                if (sources.length > 0) {
                  res.write(`data: ${JSON.stringify({ sources })}\n\n`);
@@ -560,28 +797,31 @@ export const streamChat = onRequest(
         console.log(`[Suggestions] Enabled: ${suggestionsEnabled}, Length: ${fullResponseText.trim().length}`);
         
         // Only generate if enabled AND text exists and not too short
-        if (suggestionsEnabled && fullResponseText.trim().length > 150) {
+        if (suggestionsEnabled && fullResponseText.trim().length > 1500) {
             try {
                 console.log("[Suggestions] Generating...");
-                const suggestionResp: any = await ai.models.generateContent({
+                // Suggestions use Vertex AI (Flash Lite)
+                const suggestionsAI = getVertexAI();
+                const suggestionResp = await suggestionsAI.models.generateContent({
                     model: "gemini-2.5-flash-lite",
-                    contents: [{ 
+                    contents: [{
                         role: "user",
                         parts: [{
                             text: `
                                 ${SUGGESTION_PROMPT}
-                                
+
                                 Context - AI Response:
-                                "${fullResponseText.slice(0, 2000)}"
+                                "${fullResponseText}"
                             `
                         }]
                     }],
                     config: {
                         responseMimeType: 'application/json',
-                        temperature: 0.7
+                        temperature: 0.7,
+                        maxOutputTokens: 150
                     }
                 });
-                
+
                 const suggText = suggestionResp.text;
                 
                 if (suggText) {
@@ -606,10 +846,11 @@ export const streamChat = onRequest(
         if ((res as any).flush) (res as any).flush();
         res.end();
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Stream chat error:", error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to generate response";
       res.write(
-        `data: ${JSON.stringify({ error: error.message || "Failed to generate response" })}\n\n`
+        `data: ${JSON.stringify({ error: errorMessage })}\n\n`
       );
       if ((res as any).flush) (res as any).flush();
       res.end();
