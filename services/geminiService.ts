@@ -52,13 +52,11 @@ export const streamChatResponse = async (
         attachments,
         modelId, // Pass the selected model directly - Server handles routing!
         settings: {
-          temperature: settings.temperature,
-          topP: settings.topP,
           systemInstruction: finalSystemInstruction,
           aspectRatio: settings.aspectRatio,
-          imageStyle: settings.imageStyle, // Pass imageStyle to backend
-          showSuggestions: appSettings.showSuggestions, // Pass the toggle to backend
-          userName: appSettings.userName, // Pass user name to backend
+          imageStyle: settings.imageStyle,
+          showSuggestions: appSettings.showSuggestions,
+          userName: appSettings.userName,
         },
       }),
     });

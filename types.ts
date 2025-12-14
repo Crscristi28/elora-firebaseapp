@@ -109,10 +109,8 @@ export type ImageStyle = 'none' | 'photorealistic' | 'anime' | 'digital-art' | '
 export interface PromptSettings {
   style: ToneStyle;
   systemInstruction?: string;
-  temperature: number;
-  topP: number;
   aspectRatio?: AspectRatio;
-  imageStyle?: ImageStyle; // New field
+  imageStyle?: ImageStyle;
 }
 
 export const TONE_PROMPTS: Record<ToneStyle, string> = {

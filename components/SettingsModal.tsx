@@ -379,26 +379,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                                 </div>
                             </div>
 
-                            {/* Creativity */}
-                            <div className="bg-white dark:bg-[#1e1f20] p-4 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm">
-                                <div className="flex justify-between mb-4">
-                                    <label className="text-sm font-bold text-gray-900 dark:text-white">{t('labelCreativity')}</label>
-                                    <span className="text-xs font-mono bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded">
-                                        {promptSettings.temperature}
-                                    </span>
-                                </div>
-                                <input
-                                    type="range" min="0" max="1" step="0.1"
-                                    value={promptSettings.temperature}
-                                    onChange={(e) => onUpdatePromptSettings({ ...promptSettings, temperature: parseFloat(e.target.value) })}
-                                    className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full appearance-none cursor-pointer accent-blue-500"
-                                />
-                                <div className="flex justify-between text-[10px] text-gray-400 mt-2 font-bold uppercase">
-                                    <span>Precise</span>
-                                    <span>Creative</span>
-                                </div>
-                            </div>
-
                             {/* System Instructions */}
                             <div className="bg-white dark:bg-[#1e1f20] p-4 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm">
                                 <label className="text-xs font-bold text-gray-500 uppercase mb-2 block">{t('labelInstructions')}</label>

@@ -1,11 +1,12 @@
 import { onRequest } from "firebase-functions/v2/https";
-import { GoogleGenAI, Part, Content, ThinkingConfig, ThinkingLevel, Type } from "@google/genai";
+import { GoogleGenAI, Part, Content, ThinkingLevel, Type } from "@google/genai";
 import * as admin from "firebase-admin";
 import { SUGGESTION_PROMPT } from "./prompts/suggestion";
 import { ROUTER_PROMPT } from "./prompts/router";
 import { FLASH_SYSTEM_PROMPT } from "./prompts/flash";
 import { IMAGE_AGENT_SYSTEM_PROMPT } from "./prompts/image-agent";
 import { RESEARCH_SYSTEM_PROMPT } from "./prompts/research";
+import { PRO25_SYSTEM_PROMPT } from "./prompts/pro25";
 
 admin.initializeApp();
 
@@ -26,10 +27,8 @@ interface HistoryMessage {
 interface ChatSettings {
     userName?: string;
     systemInstruction?: string;
-    temperature?: number;
-    topP?: number;
     aspectRatio?: '1:1' | '16:9' | '9:16' | '4:3' | '3:4';
-    imageStyle?: string; // Added imageStyle
+    imageStyle?: string;
     showSuggestions?: boolean;
 }
 
@@ -251,15 +250,15 @@ export const streamChat = onRequest(
           systemInstruction = systemInstruction
               ? `${FLASH_SYSTEM_PROMPT}\n\n${systemInstruction}`
               : FLASH_SYSTEM_PROMPT;
+      } else if (isPro25) {
+          systemInstruction = systemInstruction
+              ? `${PRO25_SYSTEM_PROMPT}\n\n${systemInstruction}`
+              : PRO25_SYSTEM_PROMPT;
       }
       // Note: Research has its own block with RESEARCH_SYSTEM_PROMPT
 
       // Other Model Type Checks
       const isImageAgent = selectedModelId === "image-agent";
-      const isLite = selectedModelId === "gemini-2.5-flash-lite";
-
-      // Thinking Config: Enable for Flash/Pro, Disable for Lite/Image/ImageAgent
-      const isThinkingCapable = !isLite && !isImageGen && !isImageAgent;
 
       // Track full response text for suggestions
       let fullResponseText = "";
@@ -611,66 +610,55 @@ export const streamChat = onRequest(
       } else {
         // Regular chat streaming with Google Search & Thinking
 
-        // Configure Thinking based on model type
-        let thinkingConfig: ThinkingConfig | undefined = undefined;
+        // Configure model-specific settings
+        let modelConfig;
 
-        if (isThinkingCapable) {
-            if (isPro) {
-                // Gemini 3 Pro: uses thinkingLevel
-                thinkingConfig = {
-                    includeThoughts: true,
-                    thinkingLevel: ThinkingLevel.LOW
-                };
-            } else if (isPro25) {
-                // PRO_25 manual selection: standard thinking
-                thinkingConfig = {
-                    includeThoughts: true,
-                    thinkingBudget: 4096
-                };
-            } else if (isFlash) {
-                // Gemini 2.5 Flash: dynamic thinking
-                thinkingConfig = {
-                    includeThoughts: true,
-                    thinkingBudget: -1
-                };
-            }
-        }
-
-        // Log thinking config
-        console.log(`[THINKING] Config:`, JSON.stringify(thinkingConfig));
-
-        // Configure Tools based on model
-        let tools;
         if (isFlash) {
-            tools = [{ googleSearch: {} }, { codeExecution: {} }, { urlContext: {} }];
+          // Gemini 2.5 Flash
+          modelConfig = {
+            tools: [{ googleSearch: {} }, { urlContext: {} }],
+            thinkingConfig: { includeThoughts: true, thinkingBudget: -1 },
+            temperature: 0.6,
+            topP: 0.95,
+            maxOutputTokens: 65536,
+            systemInstruction: systemInstruction,
+          };
         } else if (isPro) {
-            tools = [{ googleSearch: {} }, { codeExecution: {} }, { urlContext: {} }];
+          // Gemini 3 Pro Preview
+          modelConfig = {
+            tools: [{ googleSearch: {} }, { codeExecution: {} }, { urlContext: {} }],
+            thinkingConfig: { includeThoughts: true, thinkingLevel: ThinkingLevel.LOW },
+            temperature: 1.0,
+            topP: 0.95,
+            maxOutputTokens: 65536,
+            systemInstruction: systemInstruction,
+          };
         } else if (isPro25) {
-            tools = [{ googleSearch: {} }, { codeExecution: {} }, { urlContext: {} }];
+          // Gemini 2.5 Pro
+          modelConfig = {
+            tools: [{ googleSearch: {} }, { codeExecution: {} }, { urlContext: {} }],
+            thinkingConfig: { includeThoughts: true, thinkingBudget: 4096 },
+            temperature: 0.6,
+            topP: 0.95,
+            maxOutputTokens: 65536,
+            systemInstruction: systemInstruction,
+          };
         }
 
-        console.log(`[DEBUG] Model: ${selectedModelId}, isPro: ${isPro}`);
-        console.log(`[DEBUG] Tools config:`, JSON.stringify(tools));
-        console.log(`[DEBUG] ThinkingConfig:`, JSON.stringify(thinkingConfig));
+        console.log(`[DEBUG] Model: ${selectedModelId}, isPro: ${isPro}, isPro25: ${isPro25}, isFlash: ${isFlash}`);
+        console.log(`[DEBUG] ModelConfig:`, JSON.stringify(modelConfig));
 
         // All chat models use API Key
         const chatAI = getAI();
-        console.log(`[DEBUG] Using: API Key`);
 
         const result = await chatAI.models.generateContentStream({
           model: selectedModelId || "gemini-2.5-flash",
           contents,
-          config: {
-            tools,
-            thinkingConfig,
-            temperature: settings?.temperature ?? 1.0,
-            topP: settings?.topP ?? 0.95,
-            maxOutputTokens: 65536,
-            systemInstruction: systemInstruction,
-          },
+          config: modelConfig,
         });
 
         let sentMetadata = false;
+        let isInternalTrash = false;
 
         for await (const chunk of result) {
           // DEBUG: Log raw chunk structure to see tool usage
@@ -688,23 +676,53 @@ export const streamChat = onRequest(
                          console.log(`[DEBUG] FUNCTION CALL:`, JSON.stringify((part as any).functionCall));
                      }
                      if ((part as any).executableCode) {
-                         // Log only, don't send code to client
-                         console.log(`[DEBUG] CODE EXECUTION:`, JSON.stringify((part as any).executableCode));
-                     }
-                     if ((part as any).codeExecutionResult) {
-                         console.log(`[DEBUG] CODE RESULT:`, JSON.stringify((part as any).codeExecutionResult));
-                         const output = (part as any).codeExecutionResult.output || '';
+                        const code = (part as any).executableCode.code || '';
+                        console.log(`[DEBUG] CODE EXECUTION:`, JSON.stringify((part as any).executableCode));
 
-                         // Only send images to client, ignore ALL text output
-                         const base64ImageRegex = /data:image\/(png|jpeg|jpg|gif|webp);base64,([A-Za-z0-9+/=]+)/;
-                         const imageMatch = output.match(base64ImageRegex);
-                         if (imageMatch) {
-                             const mimeType = `image/${imageMatch[1]}`;
-                             const base64Data = imageMatch[2];
-                             res.write(`data: ${JSON.stringify({ image: { mimeType, data: base64Data } })}\n\n`);
-                             if ((res as any).flush) (res as any).flush();
-                         }
-                     }
+                        // Filter: Internal tools
+                        const isSearchOrBrowse = code.includes('concise_search(') || code.includes('browse(');
+
+                        if (isSearchOrBrowse) {
+                            isInternalTrash = true;
+                            console.log(`[DEBUG] Hiding internal tool`);
+                        } else {
+                            isInternalTrash = false;
+                            // Send code as markdown
+                            const codeMarkdown = `\n\`\`\`python\n${code}\n\`\`\`\n`;
+                            fullResponseText += codeMarkdown;
+                            res.write(`data: ${JSON.stringify({ text: codeMarkdown })}\n\n`);
+                            if ((res as any).flush) (res as any).flush();
+                        }
+                    }
+                    if ((part as any).codeExecutionResult) {
+                        console.log(`[DEBUG] CODE RESULT:`, JSON.stringify((part as any).codeExecutionResult));
+                        const output = (part as any).codeExecutionResult.output || '';
+
+                        // Filter: Errors
+                        const isError = output.includes('Traceback') || output.includes('SyntaxError') || output.includes('Error:');
+
+                        if (isInternalTrash) {
+                            console.log(`[DEBUG] Hiding internal tool result`);
+                        } else if (isError) {
+                            console.log(`[DEBUG] Hiding Python error`);
+                        } else {
+                            // Images
+                            const base64ImageRegex = /data:image\/(png|jpeg|jpg|gif|webp);base64,([A-Za-z0-9+/=]+)/;
+                            const imageMatch = output.match(base64ImageRegex);
+                            if (imageMatch) {
+                                const mimeType = `image/${imageMatch[1]}`;
+                                const base64Data = imageMatch[2];
+                                res.write(`data: ${JSON.stringify({ image: { mimeType, data: base64Data } })}\n\n`);
+                                if ((res as any).flush) (res as any).flush();
+                            } else if (output.trim()) {
+                                // Text result
+                                const resultText = `\n**Output:**\n\`\`\`\n${output}\n\`\`\`\n`;
+                                fullResponseText += resultText;
+                                res.write(`data: ${JSON.stringify({ text: resultText })}\n\n`);
+                                if ((res as any).flush) (res as any).flush();
+                            }
+                        }
+                    }
 
                     // Handle inline images from code execution (matplotlib graphs, etc.)
                     if ((part as any).inlineData) {

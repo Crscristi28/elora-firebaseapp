@@ -171,8 +171,6 @@ const App: React.FC = () => {
   // --- PROMPT SETTINGS (Global/Session State) ---
   const [promptSettings, setPromptSettings] = useState<PromptSettings>({
     style: 'normal',
-    temperature: 1.0,
-    topP: 0.95,
     systemInstruction: '',
     aspectRatio: '1:1'
   });
