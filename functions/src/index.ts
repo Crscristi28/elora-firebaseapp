@@ -616,7 +616,7 @@ export const streamChat = onRequest(
         if (isFlash) {
           // Gemini 2.5 Flash
           modelConfig = {
-            tools: [{ googleSearch: {} }, { urlContext: {} }],
+            tools: [{ googleSearch: {} }, { codeExecution: {} }, { urlContext: {} }],
             thinkingConfig: { includeThoughts: true, thinkingBudget: -1 },
             temperature: 0.6,
             topP: 0.95,
@@ -658,7 +658,6 @@ export const streamChat = onRequest(
         });
 
         let sentMetadata = false;
-        let isInternalTrash = false;
 
         for await (const chunk of result) {
           // DEBUG: Log raw chunk structure to see tool usage
@@ -676,52 +675,23 @@ export const streamChat = onRequest(
                          console.log(`[DEBUG] FUNCTION CALL:`, JSON.stringify((part as any).functionCall));
                      }
                      if ((part as any).executableCode) {
-                        const code = (part as any).executableCode.code || '';
-                        console.log(`[DEBUG] CODE EXECUTION:`, JSON.stringify((part as any).executableCode));
-
-                        // Filter: Internal tools
-                        const isSearchOrBrowse = code.includes('concise_search(') || code.includes('browse(');
-
-                        if (isSearchOrBrowse) {
-                            isInternalTrash = true;
-                            console.log(`[DEBUG] Hiding internal tool`);
-                        } else {
-                            isInternalTrash = false;
-                            // Send code as markdown
-                            const codeMarkdown = `\n\`\`\`python\n${code}\n\`\`\`\n`;
-                            fullResponseText += codeMarkdown;
-                            res.write(`data: ${JSON.stringify({ text: codeMarkdown })}\n\n`);
-                            if ((res as any).flush) (res as any).flush();
-                        }
+                        console.log(`[DEBUG] CODE EXECUTION - hidden from user`);
+                        // Code is NEVER sent to client - only images from results
                     }
                     if ((part as any).codeExecutionResult) {
-                        console.log(`[DEBUG] CODE RESULT:`, JSON.stringify((part as any).codeExecutionResult));
                         const output = (part as any).codeExecutionResult.output || '';
+                        console.log(`[DEBUG] CODE RESULT - checking for images`);
 
-                        // Filter: Errors
-                        const isError = output.includes('Traceback') || output.includes('SyntaxError') || output.includes('Error:');
-
-                        if (isInternalTrash) {
-                            console.log(`[DEBUG] Hiding internal tool result`);
-                        } else if (isError) {
-                            console.log(`[DEBUG] Hiding Python error`);
-                        } else {
-                            // Images
-                            const base64ImageRegex = /data:image\/(png|jpeg|jpg|gif|webp);base64,([A-Za-z0-9+/=]+)/;
-                            const imageMatch = output.match(base64ImageRegex);
-                            if (imageMatch) {
-                                const mimeType = `image/${imageMatch[1]}`;
-                                const base64Data = imageMatch[2];
-                                res.write(`data: ${JSON.stringify({ image: { mimeType, data: base64Data } })}\n\n`);
-                                if ((res as any).flush) (res as any).flush();
-                            } else if (output.trim()) {
-                                // Text result
-                                const resultText = `\n**Output:**\n\`\`\`\n${output}\n\`\`\`\n`;
-                                fullResponseText += resultText;
-                                res.write(`data: ${JSON.stringify({ text: resultText })}\n\n`);
-                                if ((res as any).flush) (res as any).flush();
-                            }
+                        // Only send images to client - hide everything else
+                        const base64ImageRegex = /data:image\/(png|jpeg|jpg|gif|webp);base64,([A-Za-z0-9+/=]+)/;
+                        const imageMatch = output.match(base64ImageRegex);
+                        if (imageMatch) {
+                            const mimeType = `image/${imageMatch[1]}`;
+                            const base64Data = imageMatch[2];
+                            res.write(`data: ${JSON.stringify({ image: { mimeType, data: base64Data } })}\n\n`);
+                            if ((res as any).flush) (res as any).flush();
                         }
+                        // Text output and errors are hidden - only images shown
                     }
 
                     // Handle inline images from code execution (matplotlib graphs, etc.)
