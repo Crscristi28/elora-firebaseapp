@@ -249,7 +249,54 @@ const MessageItem: React.FC<MessageItemProps> = ({
             ) : (
                 <>
                     <div className="text-[15px] md:text-[16px] leading-7 text-gray-800 dark:text-gray-200 markdown-body font-sans antialiased">
-                         <MarkdownRenderer content={msg.text} />
+                         {/* Render text with inline graphs */}
+                         {(() => {
+                             // Split text by [GRAPH:X] markers
+                             const parts = msg.text.split(/(\[GRAPH:\d+\])/);
+                             return parts.map((part, idx) => {
+                                 const match = part.match(/\[GRAPH:(\d+)\]/);
+                                 if (match) {
+                                     // Render graph inline
+                                     const graphIndex = parseInt(match[1], 10);
+                                     const att = msg.attachments?.[graphIndex];
+                                     if (att && att.isGraph) {
+                                         const cssRatio = (att.aspectRatio || '1:1').replace(':', '/');
+                                         if (att.isPlaceholder) {
+                                             return (
+                                                 <div
+                                                     key={idx}
+                                                     className="my-4 relative rounded-2xl overflow-hidden border border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-[#1a1b1e] animate-pulse"
+                                                     style={{ width: '400px', maxWidth: '100%', aspectRatio: cssRatio }}
+                                                 >
+                                                     <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+                                                         <Sparkles className="text-blue-500 animate-pulse" size={24} />
+                                                         <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Generating graph...</span>
+                                                     </div>
+                                                 </div>
+                                             );
+                                         }
+                                         if (att.storageUrl || att.data) {
+                                             return (
+                                                 <div
+                                                     key={idx}
+                                                     className="my-4 relative rounded-2xl overflow-hidden border border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-[#1a1b1e]"
+                                                     style={{ width: '400px', maxWidth: '100%', aspectRatio: cssRatio }}
+                                                 >
+                                                     <img
+                                                         src={att.storageUrl || `data:${att.mimeType};base64,${att.data}`}
+                                                         alt="Graph"
+                                                         className="w-full h-full object-contain"
+                                                     />
+                                                 </div>
+                                             );
+                                         }
+                                     }
+                                     return null;
+                                 }
+                                 // Render text part
+                                 return part ? <MarkdownRenderer key={idx} content={part} /> : null;
+                             });
+                         })()}
                     </div>
                     {msg.isStreaming && isGeneratingImage && (
                         <Indicators type="generating" />
@@ -257,10 +304,10 @@ const MessageItem: React.FC<MessageItemProps> = ({
                 </>
             )}
 
-            {/* Generated Images */}
-            {msg.attachments && msg.attachments.length > 0 && (
+            {/* Generated Images (non-graph attachments only - graphs are inline) */}
+            {msg.attachments && msg.attachments.filter(a => !a.isGraph).length > 0 && (
                 <div className="mt-4 flex flex-wrap gap-3">
-                    {msg.attachments.map((att: Attachment, idx: number) => {
+                    {msg.attachments.filter(a => !a.isGraph).map((att: Attachment, idx: number) => {
                         if (!att.mimeType?.startsWith('image/')) return null;
 
                         // Convert "16:9" to "16/9" for CSS aspect-ratio

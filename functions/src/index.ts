@@ -7,6 +7,7 @@ import { FLASH_SYSTEM_PROMPT } from "./prompts/flash";
 import { IMAGE_AGENT_SYSTEM_PROMPT } from "./prompts/image-agent";
 import { RESEARCH_SYSTEM_PROMPT } from "./prompts/research";
 import { PRO25_SYSTEM_PROMPT } from "./prompts/pro25";
+import { PRO3_PREVIEW_SYSTEM_PROMPT } from "./prompts/pro3-preview";
 
 admin.initializeApp();
 
@@ -250,6 +251,10 @@ export const streamChat = onRequest(
           systemInstruction = systemInstruction
               ? `${FLASH_SYSTEM_PROMPT}\n\n${systemInstruction}`
               : FLASH_SYSTEM_PROMPT;
+      } else if (isPro) {
+          systemInstruction = systemInstruction
+              ? `${PRO3_PREVIEW_SYSTEM_PROMPT}\n\n${systemInstruction}`
+              : PRO3_PREVIEW_SYSTEM_PROMPT;
       } else if (isPro25) {
           systemInstruction = systemInstruction
               ? `${PRO25_SYSTEM_PROMPT}\n\n${systemInstruction}`
@@ -696,13 +701,13 @@ export const streamChat = onRequest(
 
                     // Handle inline images from code execution (matplotlib graphs, etc.)
                     if ((part as any).inlineData) {
-                        console.log(`[DEBUG] INLINE DATA:`, (part as any).inlineData.mimeType);
+                        console.log(`[DEBUG] INLINE DATA (graph):`, (part as any).inlineData.mimeType);
                         const inlineData = (part as any).inlineData;
                         const mimeType = inlineData.mimeType || 'image/png';
                         const base64Data = inlineData.data;
-                        // Send as image event (instant display, not token-by-token)
+                        // Send as GRAPH event (separate from image-agent images)
                         res.write(`data: ${JSON.stringify({
-                            image: { mimeType, data: base64Data }
+                            graph: { mimeType, data: base64Data }
                         })}\n\n`);
                         if ((res as any).flush) (res as any).flush();
                     }

@@ -21,6 +21,7 @@ export const streamChatResponse = async (
   onThinking?: (text: string) => void,
   onSuggestions?: (suggestions: string[]) => void,
   onImage?: (image: { mimeType: string; data: string; aspectRatio?: string }) => Promise<void>,
+  onGraph?: (graph: { mimeType: string; data: string }) => Promise<number>,
   onRoutedModel?: (model: string) => void,
   onGeneratingImage?: () => void
 ): Promise<string> => {
@@ -106,7 +107,7 @@ export const streamChatResponse = async (
               onChunk(data.text);
             }
 
-            // Handle image event - AWAIT the Storage upload!
+            // Handle image event (from image-agent) - AWAIT the Storage upload!
             if (data.image) {
               console.log("GeminiService: RECEIVED IMAGE EVENT!", data.image.mimeType);
               if (onImage) {
@@ -115,6 +116,18 @@ export const streamChatResponse = async (
                 console.log("GeminiService: onImage callback DONE");
               } else {
                 console.log("GeminiService: NO onImage callback!");
+              }
+            }
+
+            // Handle graph event (from codeExecution) - separate from images
+            // Marker is added HERE so fullText includes it (saved to DB correctly)
+            if (data.graph) {
+              console.log("GeminiService: RECEIVED GRAPH EVENT!", data.graph.mimeType);
+              if (onGraph) {
+                const graphIndex = await onGraph(data.graph);
+                const marker = `\n[GRAPH:${graphIndex}]\n`;
+                fullText += marker;
+                onChunk(marker);
               }
             }
 

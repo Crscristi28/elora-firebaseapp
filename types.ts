@@ -22,6 +22,7 @@ export interface Attachment {
   name?: string;
   isPlaceholder?: boolean; // For skeleton loading states
   aspectRatio?: string; // For placeholders to match dimensions (e.g. "16:9")
+  isGraph?: boolean; // True for graphs from codeExecution (rendered inline with marker)
 }
 
 export interface Source {

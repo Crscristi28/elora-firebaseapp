@@ -463,6 +463,36 @@ const App: React.FC = () => {
                 console.log("APP: Missing user or sessionId!", user?.uid, sessionId);
             }
         },
+        // onGraph - graphs from codeExecution (rendered inline with marker)
+        // Returns index immediately, upload runs in background (non-blocking)
+        async (graphData) => {
+            const graphIndex = streamAttachmentsRef.current.length;
+
+            if (user?.uid && sessionId) {
+                const placeholder: Attachment = {
+                    mimeType: graphData.mimeType,
+                    isPlaceholder: true,
+                    isGraph: true,
+                    aspectRatio: '1:1'
+                };
+                streamAttachmentsRef.current = [...streamAttachmentsRef.current, placeholder];
+
+                // Upload in background - don't block streaming
+                uploadGeneratedImage(graphData, user.uid, sessionId)
+                    .then(attachment => {
+                        streamAttachmentsRef.current = streamAttachmentsRef.current.map(att =>
+                            att === placeholder
+                                ? { ...attachment, isGraph: true, aspectRatio: '1:1' }
+                                : att
+                        );
+                    })
+                    .catch(err => {
+                        console.error("APP: Failed to upload graph:", err);
+                        streamAttachmentsRef.current = streamAttachmentsRef.current.filter(att => att !== placeholder);
+                    });
+            }
+            return graphIndex;
+        },
         (model) => {
             setRoutedModel(model);
         },
