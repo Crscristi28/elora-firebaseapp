@@ -7,7 +7,7 @@ export enum Role {
 export enum ModelId {
   AUTO = 'auto', // The Smart Router
   LITE = 'gemini-2.5-flash-lite', // The Router/Suggester
-  FLASH = 'gemini-2.5-flash', // The Standard Chat
+  FLASH = 'gemini-3-flash-preview', // The Standard Chat
   PRO = 'gemini-3-pro-preview', // The Brain (low limits)
   PRO_25 = 'gemini-2.5-pro', // Stable Pro (high limits)
   IMAGE_GEN = 'gemini-2.5-flash-image', // The Artist

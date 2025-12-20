@@ -37,7 +37,7 @@ interface ChatRequest {
     history?: HistoryMessage[];
     newMessage?: string;
     attachments?: ChatAttachment[];
-    modelId?: 'gemini-2.5-flash' | 'gemini-3-pro-preview' | 'gemini-2.5-pro' | 'gemini-2.5-flash-lite' | 'gemini-2.5-flash-image' | 'auto' | 'image-agent' | 'research';
+    modelId?: 'gemini-3-flash-preview' | 'gemini-3-pro-preview' | 'gemini-2.5-pro' | 'gemini-2.5-flash-lite' | 'gemini-2.5-flash-image' | 'auto' | 'image-agent' | 'research';
     settings?: ChatSettings;
 }
 
@@ -105,7 +105,7 @@ async function determineModelFromIntent(ai: GoogleGenAI, lastMessage: string, hi
         return JSON.parse(cleanJson) as RouterDecision;
     } catch (e) {
         console.error("Router failed, defaulting to Flash:", e);
-        return { targetModel: "gemini-2.5-flash", reasoning: "Router error fallback" };
+        return { targetModel: "gemini-3-flash-preview", reasoning: "Router error fallback" };
     }
 }
 
@@ -167,7 +167,7 @@ export const streamChat = onRequest(
              if ((res as any).flush) (res as any).flush();
           } catch (err) {
              console.error("[Auto-Router] Error, using default:", err);
-             selectedModelId = "gemini-2.5-flash";
+             selectedModelId = "gemini-3-flash-preview";
           }
       }
 
@@ -239,7 +239,7 @@ export const streamChat = onRequest(
       }
 
       // Model Type Checks (Use selectedModelId)
-      const isFlash = selectedModelId === "gemini-2.5-flash";
+      const isFlash = selectedModelId === "gemini-3-flash-preview";
       const isPro = selectedModelId === "gemini-3-pro-preview";
       const isPro25 = selectedModelId === "gemini-2.5-pro" && !isResearch; // PRO_25 manual selection (isResearch is already checked before model ID mapping)
 
@@ -247,17 +247,18 @@ export const streamChat = onRequest(
       console.log(`[MODEL] Selected: ${selectedModelId} | isFlash: ${isFlash} | isPro: ${isPro} | isPro25: ${isPro25} | isResearch: ${isResearch}`);
 
       // Add model-specific system prompts
+      // User preferences are wrapped in <user_preferences> to clearly separate from system instructions
       if (isFlash) {
           systemInstruction = systemInstruction
-              ? `${FLASH_SYSTEM_PROMPT}\n\n${systemInstruction}`
+              ? `${FLASH_SYSTEM_PROMPT}\n\n<user_preferences>\n${systemInstruction}\n</user_preferences>`
               : FLASH_SYSTEM_PROMPT;
       } else if (isPro) {
           systemInstruction = systemInstruction
-              ? `${PRO3_PREVIEW_SYSTEM_PROMPT}\n\n${systemInstruction}`
+              ? `${PRO3_PREVIEW_SYSTEM_PROMPT}\n\n<user_preferences>\n${systemInstruction}\n</user_preferences>`
               : PRO3_PREVIEW_SYSTEM_PROMPT;
       } else if (isPro25) {
           systemInstruction = systemInstruction
-              ? `${PRO25_SYSTEM_PROMPT}\n\n${systemInstruction}`
+              ? `${PRO25_SYSTEM_PROMPT}\n\n<user_preferences>\n${systemInstruction}\n</user_preferences>`
               : PRO25_SYSTEM_PROMPT;
       }
       // Note: Research has its own block with RESEARCH_SYSTEM_PROMPT
@@ -619,13 +620,13 @@ export const streamChat = onRequest(
         let modelConfig;
 
         if (isFlash) {
-          // Gemini 2.5 Flash
+          // Gemini 3 Flash (thinkingLevel options: MINIMAL, LOW, MEDIUM, HIGH)
           modelConfig = {
             tools: [{ googleSearch: {} }, { codeExecution: {} }, { urlContext: {} }],
-            thinkingConfig: { includeThoughts: true, thinkingBudget: -1 },
-            temperature: 0.6,
+            thinkingConfig: { includeThoughts: true, thinkingLevel: ThinkingLevel.MEDIUM },
+            temperature: 1.0,
             topP: 0.95,
-            maxOutputTokens: 65536,
+            maxOutputTokens: 64000,
             systemInstruction: systemInstruction,
           };
         } else if (isPro) {
@@ -657,7 +658,7 @@ export const streamChat = onRequest(
         const chatAI = getAI();
 
         const result = await chatAI.models.generateContentStream({
-          model: selectedModelId || "gemini-2.5-flash",
+          model: selectedModelId || "gemini-3-flash-preview",
           contents,
           config: modelConfig,
         });
@@ -714,6 +715,7 @@ export const streamChat = onRequest(
 
                      // Check if this part is a thought
                      const isThought = (part as any).thought === true;
+                     console.log(`[DEBUG] Part thought check:`, { thought: (part as any).thought, thoughtSignature: (part as any).thoughtSignature, hasText: !!part.text });
 
                      if (isThought && part.text) {
                          res.write(`data: ${JSON.stringify({ thinking: part.text })}\n\n`);
