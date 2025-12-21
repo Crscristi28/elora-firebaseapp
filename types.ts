@@ -19,6 +19,7 @@ export interface Attachment {
   mimeType: string;
   data?: string; // base64 (Local preview)
   storageUrl?: string; // Firebase Storage URL (Remote persistence)
+  fileUri?: string; // Google AI File API URI (for Gemini, no size limit)
   name?: string;
   isPlaceholder?: boolean; // For skeleton loading states
   aspectRatio?: string; // For placeholders to match dimensions (e.g. "16:9")

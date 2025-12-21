@@ -1,6 +1,8 @@
 import { onRequest } from "firebase-functions/v2/https";
 import { GoogleGenAI, Part, Content, ThinkingLevel, Type } from "@google/genai";
+import { GoogleAIFileManager } from "@google/generative-ai/server";
 import * as admin from "firebase-admin";
+import * as fs from "fs";
 import { SUGGESTION_PROMPT } from "./prompts/suggestion";
 import { ROUTER_PROMPT } from "./prompts/router";
 import { FLASH_SYSTEM_PROMPT } from "./prompts/flash";
@@ -17,6 +19,7 @@ interface ChatAttachment {
     data: string;
     name?: string;
     storageUrl?: string;
+    fileUri?: string;
 }
 
 interface HistoryMessage {
@@ -55,21 +58,23 @@ const getAI = () => {
   return new GoogleGenAI({ apiKey });
 };
 
-// Vertex AI instance (editImage only - supports HTTP URL in fileUri)
-const getVertexAI = () => {
-  return new GoogleGenAI({
-    vertexai: true,
-    project: "elenor-57bde",
-    location: "global"
-  });
-};
 
 // Helper: Check if MIME type is supported by inlineData (Images, PDF, Audio, Video)
 const isInlineDataSupported = (mimeType: string): boolean => {
-    return mimeType.startsWith('image/') || 
-           mimeType.startsWith('video/') || 
-           mimeType.startsWith('audio/') || 
+    return mimeType.startsWith('image/') ||
+           mimeType.startsWith('video/') ||
+           mimeType.startsWith('audio/') ||
            mimeType === 'application/pdf';
+};
+
+// Helper: Normalize MIME type for File API (avoid codeExecution errors)
+// Everything that's not media becomes text/plain - model is smart enough to understand content
+const getFileApiMimeType = (mimeType: string): string => {
+    const isMedia = mimeType.startsWith('image/') ||
+                    mimeType.startsWith('video/') ||
+                    mimeType.startsWith('audio/') ||
+                    mimeType === 'application/pdf';
+    return isMedia ? mimeType : 'text/plain';
 };
 
 // Helper: Router Logic
@@ -176,8 +181,17 @@ export const streamChat = onRequest(
 
       if (attachments && attachments.length > 0) {
         attachments.forEach((att: ChatAttachment) => {
-            if (isInlineDataSupported(att.mimeType)) {
-                // Send as inlineData (Images, PDF, etc.)
+            if (att.fileUri) {
+                // Use File API URI (no size limit, faster)
+                // MIME type must match what was used in unifiedUpload
+                parts.push({
+                    fileData: {
+                        fileUri: att.fileUri,
+                        mimeType: getFileApiMimeType(att.mimeType),
+                    },
+                });
+            } else if (isInlineDataSupported(att.mimeType)) {
+                // Fallback: Send as inlineData (has 10MB limit)
                 parts.push({
                     inlineData: {
                         mimeType: att.mimeType,
@@ -290,8 +304,8 @@ export const streamChat = onRequest(
             }
         }
 
-        // Image generation uses Vertex AI
-        const imageGenAI = getVertexAI();
+        // Image generation uses Gemini API (supports fileUri from File API)
+        const imageGenAI = getAI();
         const response = await imageGenAI.models.generateContent({
           model: selectedModelId!,
           contents,
@@ -421,8 +435,8 @@ export const streamChat = onRequest(
           }
         }
 
-        // Image agent uses Vertex AI (Flash)
-        const imageAgentAI = getVertexAI();
+        // Image agent uses Gemini API (supports fileUri from File API)
+        const imageAgentAI = getAI();
         const agentResult = await imageAgentAI.models.generateContent({
           model: "gemini-2.5-flash",
           contents: imageAgentContents,
@@ -458,8 +472,8 @@ export const streamChat = onRequest(
               res.write(`data: ${JSON.stringify({ generatingImage: true })}\n\n`);
               if ((res as any).flush) (res as any).flush();
 
-              // Call the image model (Vertex AI)
-              const generateImageAI = getVertexAI();
+              // Call the image model (Gemini API - supports fileUri)
+              const generateImageAI = getAI();
               const imageResponse = await generateImageAI.models.generateContent({
                 model: "gemini-2.5-flash-image",
                 contents: [{ role: "user", parts: [{ text: finalPrompt }] }],
@@ -490,9 +504,9 @@ export const streamChat = onRequest(
               res.write(`data: ${JSON.stringify({ generatingImage: true })}\n\n`);
               if ((res as any).flush) (res as any).flush();
 
-              // Call the image model with existing image (Vertex AI for HTTP URL support)
-              const vertexAI = getVertexAI();
-              const editResponse = await vertexAI.models.generateContent({
+              // Call the image model with existing image (Gemini API - supports fileUri)
+              const editImageAI = getAI();
+              const editResponse = await editImageAI.models.generateContent({
                 model: "gemini-2.5-flash-image",
                 contents: [{
                   role: "user",
@@ -715,7 +729,6 @@ export const streamChat = onRequest(
 
                      // Check if this part is a thought
                      const isThought = (part as any).thought === true;
-                     console.log(`[DEBUG] Part thought check:`, { thought: (part as any).thought, thoughtSignature: (part as any).thoughtSignature, hasText: !!part.text });
 
                      if (isThought && part.text) {
                          res.write(`data: ${JSON.stringify({ thinking: part.text })}\n\n`);
@@ -833,3 +846,83 @@ export const streamChat = onRequest(
       res.end();
     }
   });
+
+/**
+ * Unified Upload: Parallel upload to Firebase Storage + Google AI File API
+ * Removes 10MB inlineData limit by using File API
+ */
+export const unifiedUpload = onRequest(
+  {
+    cors: true,
+    secrets: ["GEMINI_API_KEY"],
+    memory: "512MiB",
+    timeoutSeconds: 120,
+  },
+  async (req, res) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+    if (req.method === "OPTIONS") {
+      res.status(200).end();
+      return;
+    }
+
+    if (req.method !== "POST") {
+      res.status(405).json({ error: "Method not allowed" });
+      return;
+    }
+
+    try {
+      const { fileName, mimeType, fileBufferBase64 } = req.body;
+
+      if (!fileName || !mimeType || !fileBufferBase64) {
+        res.status(400).json({ error: "Missing required fields: fileName, mimeType, fileBufferBase64" });
+        return;
+      }
+
+      // Decode base64 to buffer and write to temp file
+      const buffer = Buffer.from(fileBufferBase64, 'base64');
+      const tempPath = `/tmp/${Date.now()}_${fileName}`;
+      fs.writeFileSync(tempPath, buffer);
+
+      const fileManager = new GoogleAIFileManager(process.env.GEMINI_API_KEY!);
+      const bucket = admin.storage().bucket();
+
+      // PARALLEL UPLOAD: Firebase Storage (for UI) + Google AI File API (for Gemini)
+      const [fbUploadResult, aiUploadResult] = await Promise.all([
+        // Firebase Storage upload
+        bucket.upload(tempPath, {
+          destination: `attachments/${Date.now()}_${fileName}`,
+          metadata: { contentType: mimeType }
+        }),
+        // Google AI File API upload (normalized MIME type for code/text files)
+        fileManager.uploadFile(tempPath, {
+          mimeType: getFileApiMimeType(mimeType),
+          displayName: fileName,
+        })
+      ]);
+
+      // Generate signed URL for Firebase Storage (permanent access)
+      const [storageUrl] = await fbUploadResult[0].getSignedUrl({
+        action: 'read',
+        expires: '03-01-2500'
+      });
+
+      // Cleanup temp file
+      fs.unlinkSync(tempPath);
+
+      console.log(`[UnifiedUpload] Success: ${fileName} | storageUrl: ${storageUrl.substring(0, 50)}... | fileUri: ${aiUploadResult.file.uri}`);
+
+      res.json({
+        storageUrl,
+        fileUri: aiUploadResult.file.uri
+      });
+
+    } catch (error: unknown) {
+      console.error("[UnifiedUpload] Error:", error);
+      const errorMessage = error instanceof Error ? error.message : "Upload failed";
+      res.status(500).json({ error: errorMessage });
+    }
+  }
+);

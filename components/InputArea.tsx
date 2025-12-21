@@ -3,72 +3,41 @@ import { ArrowUp, Plus, X, Mic, Square, FileText, Image as ImageIcon, Loader2, U
 import { Attachment, PromptSettings, ModelId, ChatMessage, AspectRatio, ImageStyle } from '../types';
 import { fileToBase64 } from '../services/geminiService';
 import { useAuth } from '../hooks/useAuth';
-import { storage } from '../firebase';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { translations, Language, TranslationKey } from '../translations';
 
-// MIME type to file extension mapping
-const MIME_TO_EXT: Record<string, string> = {
-  'image/jpeg': 'jpg',
-  'image/png': 'png',
-  'image/gif': 'gif',
-  'image/webp': 'webp',
-  'image/svg+xml': 'svg',
-  'application/pdf': 'pdf',
-  'text/plain': 'txt',
-  'text/csv': 'csv'
-};
+const UNIFIED_UPLOAD_URL = 'https://us-central1-elenor-57bde.cloudfunctions.net/unifiedUpload';
 
 /**
- * Uploads attachment to Firebase Storage
- * Returns the download URL
+ * Uploads attachment via unified Cloud Function
+ * Returns both storageUrl (for UI preview) and fileUri (for Gemini API)
  */
-const uploadAttachmentToStorage = async (
+const uploadAttachment = async (
   base64Data: string,
   mimeType: string,
-  userId: string,
   originalName?: string
-): Promise<string> => {
+): Promise<{ storageUrl: string; fileUri: string }> => {
   try {
     // Validate size (20MB limit)
     if (base64Data.length > 28 * 1024 * 1024) {
       throw new Error("File too large (max 20MB)");
     }
 
-    // Decode base64
-    const byteCharacters = atob(base64Data);
-    const byteNumbers = new Array(byteCharacters.length);
-    for (let i = 0; i < byteCharacters.length; i++) {
-      byteNumbers[i] = byteCharacters.charCodeAt(i);
-    }
-    const byteArray = new Uint8Array(byteNumbers);
-    const blob = new Blob([byteArray], { type: mimeType });
+    const response = await fetch(UNIFIED_UPLOAD_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fileName: originalName || `file_${Date.now()}`,
+        mimeType,
+        fileBufferBase64: base64Data
+      })
+    });
 
-    // Get file extension
-    let fileName = '';
-    const timestamp = Date.now();
-
-    if (originalName) {
-        // Use original extension if available
-        const parts = originalName.split('.');
-        if (parts.length > 1) {
-            const ext = parts.pop();
-            fileName = `${timestamp}_${parts.join('.')}.${ext}`;
-        } else {
-             fileName = `${timestamp}_${originalName}`;
-        }
-    } else {
-         // Fallback to MIME mapping
-         const ext = MIME_TO_EXT[mimeType] || 'bin';
-         fileName = `${timestamp}.${ext}`;
+    if (!response.ok) {
+      throw new Error(`Upload failed: ${response.status}`);
     }
 
-    // Upload to Storage
-    const storageRef = ref(storage, `users/${userId}/uploads/${fileName}`);
-    await uploadBytes(storageRef, blob);
-
-    // Get download URL
-    return await getDownloadURL(storageRef);
+    const { storageUrl, fileUri } = await response.json();
+    return { storageUrl, fileUri };
   } catch (e: unknown) {
     console.error("Upload failed:", e);
     const errorMessage = e instanceof Error ? e.message : 'Unknown error';
@@ -244,8 +213,8 @@ const InputArea: React.FC<InputAreaProps> = ({ onSend, isLoading, selectedModel,
       newAttachments.forEach(async (att, i) => {
         const attachmentIndex = startIndex + i;
         try {
-          const storageUrl = await uploadAttachmentToStorage(att.data!, att.mimeType, user.uid, att.name);
-          setAttachments(prev => prev.map((a, idx) => idx === attachmentIndex ? { ...a, storageUrl } : a));
+          const { storageUrl, fileUri } = await uploadAttachment(att.data!, att.mimeType, att.name);
+          setAttachments(prev => prev.map((a, idx) => idx === attachmentIndex ? { ...a, storageUrl, fileUri } : a));
           setUploadingIndexes(prev => {
             const updated = new Set(prev);
             updated.delete(attachmentIndex);
