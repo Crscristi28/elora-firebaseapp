@@ -377,14 +377,22 @@ export const streamChat = onRequest(
             properties: {
               imageUrl: {
                 type: Type.STRING,
-                description: "The Firebase Storage URL of the image to edit"
+                description: "The Firebase Storage URL of the image (for reference/logging)"
+              },
+              fileUri: {
+                type: Type.STRING,
+                description: "The Google AI File API URI for the image (use this for the model)"
+              },
+              mimeType: {
+                type: Type.STRING,
+                description: "The MIME type of the image (e.g. image/webp, image/png, image/jpeg)"
               },
               prompt: {
                 type: Type.STRING,
                 description: "Clear instruction describing what changes to make to the image"
               }
             },
-            required: ["imageUrl", "prompt"]
+            required: ["imageUrl", "fileUri", "mimeType", "prompt"]
           }
         };
 
@@ -414,17 +422,21 @@ export const streamChat = onRequest(
         ];
 
         // Add current attachment URLs to the last user message
-        const currentImageUrls: string[] = [];
+        const currentImages: Array<{storageUrl: string, fileUri?: string, mimeType: string}> = [];
         if (attachments) {
           attachments.forEach(att => {
             if (att.storageUrl && att.mimeType?.startsWith('image/')) {
-              currentImageUrls.push(att.storageUrl);
+              currentImages.push({
+                storageUrl: att.storageUrl,
+                fileUri: att.fileUri,
+                mimeType: att.mimeType
+              });
             }
           });
         }
 
-        if (currentImageUrls.length > 0) {
-          const urlContext = `\n\n[Images attached to this message:\n${currentImageUrls.map((url, idx) => `${idx + 1}. ${url}`).join('\n')}]`;
+        if (currentImages.length > 0) {
+          const urlContext = `\n\n[Images attached to this message:\n${currentImages.map((img, idx) => `${idx + 1}. storageUrl: ${img.storageUrl} | fileUri: ${img.fileUri || 'N/A'} | mimeType: ${img.mimeType}`).join('\n')}]`;
           const lastMsg = imageAgentContents[imageAgentContents.length - 1];
           if (lastMsg && lastMsg.parts) {
             const textPartIndex = lastMsg.parts.findIndex(p => p.text);
@@ -496,10 +508,16 @@ export const streamChat = onRequest(
                 }
               }
             } else if (name === "editImage") {
-              const imageUrl = args.imageUrl;
+              const imageUrl = args.imageUrl; // storageUrl (Firebase - always HTTPS)
+              const rawFileUri = args.fileUri;
+              const imageMimeType = args.mimeType || 'image/png';
               const editPrompt = args.prompt;
 
-              console.log(`[ImageAgent] Editing image: ${imageUrl}`);
+              // Hybrid Selector: gai-image:// is temp internal ref (expires), use storageUrl instead
+              const isInternalGenerativeUri = rawFileUri?.startsWith('gai-image://');
+              const imageFileUri = (rawFileUri && !isInternalGenerativeUri) ? rawFileUri : imageUrl;
+
+              console.log(`[ImageAgent] Editing image | storageUrl: ${imageUrl} | rawFileUri: ${rawFileUri} | finalUri: ${imageFileUri} | mimeType: ${imageMimeType}`);
 
               // Notify frontend that image editing is starting
               res.write(`data: ${JSON.stringify({ generatingImage: true })}\n\n`);
@@ -512,7 +530,7 @@ export const streamChat = onRequest(
                 contents: [{
                   role: "user",
                   parts: [
-                    { fileData: { fileUri: imageUrl, mimeType: "image/png" } },
+                    { fileData: { fileUri: imageFileUri, mimeType: imageMimeType } },
                     { text: `${editPrompt}. Keep original aspect ratio and orientation.` }
                   ]
                 }],
