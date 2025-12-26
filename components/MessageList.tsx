@@ -101,9 +101,22 @@ const MessageItem: React.FC<MessageItemProps> = ({
   onSaveTTSSettings,
   onSuggestionClick
 }) => {
-  
+
   const [isThinkingExpanded, setIsThinkingExpanded] = useState(false);
+  const [isUserExpanded, setIsUserExpanded] = useState(false);
+  const [isCollapsible, setIsCollapsible] = useState(false);
+  const userTextRef = useRef<HTMLDivElement>(null);
   const isUser = msg.role === Role.USER;
+
+  // Detect if user message text overflows (needs collapse button)
+  useEffect(() => {
+    if (isUser && userTextRef.current && editingId !== msg.id) {
+      const element = userTextRef.current;
+      // Check if content overflows the clamped height (with 2px tolerance)
+      const hasOverflow = element.scrollHeight > element.clientHeight + 2;
+      setIsCollapsible(hasOverflow);
+    }
+  }, [msg.text, isUser, editingId, msg.id]);
 
   // --- USER MESSAGE LAYOUT (BUBBLE) ---
   if (isUser) {
@@ -167,7 +180,12 @@ const MessageItem: React.FC<MessageItemProps> = ({
                 {/* Text Bubble */}
                 {msg.text && (
                     <div className="relative px-5 py-3.5 bg-gray-100 dark:bg-[#2d2e33] text-gray-900 dark:text-white rounded-[24px] rounded-tr-sm shadow-sm max-w-full overflow-hidden">
-                        <div className="text-sm md:text-base leading-relaxed font-sans overflow-x-auto">
+                        <div
+                            ref={userTextRef}
+                            className={`text-sm md:text-base leading-relaxed font-sans overflow-hidden transition-all duration-300 ${
+                                !isUserExpanded && editingId !== msg.id ? 'line-clamp-3 md:line-clamp-5' : ''
+                            }`}
+                        >
                             {editingId === msg.id ? (
                                 <div className="min-w-[200px]">
                                     <textarea
@@ -184,6 +202,17 @@ const MessageItem: React.FC<MessageItemProps> = ({
                                 </div>
                             ) : <MarkdownRenderer content={msg.text} />}
                         </div>
+
+                        {/* Expand/Collapse Toggle - Gemini style */}
+                        {isCollapsible && editingId !== msg.id && (
+                            <button
+                                onClick={() => setIsUserExpanded(!isUserExpanded)}
+                                className="absolute top-3 right-3 p-1 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors"
+                                title={isUserExpanded ? "Show less" : "Show more"}
+                            >
+                                <ChevronDown size={16} className={`transition-transform duration-300 ${isUserExpanded ? 'rotate-180' : ''}`} />
+                            </button>
+                        )}
                     </div>
                 )}
 

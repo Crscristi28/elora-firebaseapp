@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import { ChatMessage, Role, Attachment, ModelId, MODELS, ChatSession, PromptSettings, AppSettings, UserProfile, Source } from './types';
+import { ChatMessage, Role, Attachment, ModelId, MODELS, ChatSession, PromptSettings, AppSettings, Source } from './types';
 import MessageList from './components/MessageList';
 import InputArea from './components/InputArea';
 import Sidebar from './components/Sidebar';
@@ -318,11 +318,13 @@ const App: React.FC = () => {
       attachments: attachmentsForDb,
       timestamp: Date.now(),
     };
-    await addMessageToDb(sessionId, newUserMsg);
 
+    // Show loading indicator IMMEDIATELY (before DB operations)
     setIsLoading(true);
     setRoutedModel(null);
     setIsGeneratingImage(false);
+
+    await addMessageToDb(sessionId, newUserMsg);
 
     const botMsgId = (Date.now() + 1).toString();
     const botMsgPlaceholder: ChatMessage = {
@@ -619,7 +621,7 @@ const App: React.FC = () => {
 
   // --- RENDER LOGIC ---
   if (authLoading || (user && sessionsLoading)) {
-      return <div className="fixed inset-0 flex items-center justify-center bg-white dark:bg-[#0e0e10] text-gray-500">{t('loading')}</div>;
+      return <div className="fixed inset-0 z-50 flex items-center justify-center bg-white dark:bg-[#0e0e10] text-gray-500">{t('loading')}</div>;
   }
 
   if (!user) {
@@ -639,7 +641,7 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="fixed inset-0 flex bg-white dark:bg-[#0e0e10] text-gray-900 dark:text-gray-100 font-sans overflow-hidden selection:bg-blue-500/30">
+    <div className="fixed inset-0 flex bg-white dark:bg-[#0e0e10] text-gray-900 dark:text-gray-100 font-sans overflow-hidden selection:bg-blue-500/30 animate-fade-in">
       <SettingsModal 
         isOpen={isSettingsOpen} 
         onClose={() => setIsSettingsOpen(false)} 

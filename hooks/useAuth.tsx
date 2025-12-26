@@ -14,6 +14,7 @@ const AuthContext = createContext<AuthContextType>({ user: null, loading: true }
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const isFirstCheck = React.useRef(true);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser: User | null) => {
@@ -26,10 +27,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           isPro: false, // TODO: Fetch this from Firestore 'users' collection later
         };
         setUser(userProfile);
+        setLoading(false);
+        isFirstCheck.current = false;
       } else {
         setUser(null);
+        // On first check, wait a bit before showing login screen
+        // to prevent flash when persisted auth is being restored
+        if (isFirstCheck.current) {
+          setTimeout(() => {
+            if (isFirstCheck.current) {
+              setLoading(false);
+              isFirstCheck.current = false;
+            }
+          }, 300);
+        } else {
+          setLoading(false);
+        }
       }
-      setLoading(false);
     });
 
     return () => unsubscribe();
