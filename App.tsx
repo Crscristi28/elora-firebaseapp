@@ -441,38 +441,37 @@ const App: React.FC = () => {
                 return { ...prev, suggestions: streamSuggestionsRef.current };
             });
         },
+        // onImage - images from Pro Image/Flash Image (rendered inline with marker)
+        // Returns index immediately, upload runs in background (non-blocking)
         async (imageData) => {
-            console.log("APP: onImage called!", imageData.mimeType);
+            const imageIndex = streamAttachmentsRef.current.length;
+            console.log("APP: onImage called!", imageData.mimeType, "index:", imageIndex);
+
             if (user?.uid && sessionId) {
-                // 1. Create placeholder immediately with aspect ratio
                 const placeholder: Attachment = {
                     mimeType: imageData.mimeType,
                     isPlaceholder: true,
                     aspectRatio: imageData.aspectRatio || settings.aspectRatio || '1:1'
                 };
-
-                // 2. Add placeholder to show skeleton immediately
                 streamAttachmentsRef.current = [...streamAttachmentsRef.current, placeholder];
 
-                try {
-                    console.log("APP: Uploading to Storage...");
-                    const attachment = await uploadGeneratedImage(imageData, user.uid, sessionId);
-                    console.log("APP: Upload done, storageUrl:", attachment.storageUrl);
-
-                    // 3. Replace placeholder with real attachment (keep aspectRatio)
-                    streamAttachmentsRef.current = streamAttachmentsRef.current.map(att =>
-                        att === placeholder
-                            ? { ...attachment, aspectRatio: imageData.aspectRatio || settings.aspectRatio || '1:1' }
-                            : att
-                    );
-                } catch (err) {
-                    console.error("APP: Failed to upload generated image:", err);
-                    // Remove placeholder on error
-                    streamAttachmentsRef.current = streamAttachmentsRef.current.filter(att => att !== placeholder);
-                }
+                // Upload in background - don't block streaming (same as graphs)
+                uploadGeneratedImage(imageData, user.uid, sessionId)
+                    .then(attachment => {
+                        streamAttachmentsRef.current = streamAttachmentsRef.current.map(att =>
+                            att === placeholder
+                                ? { ...attachment, aspectRatio: imageData.aspectRatio || settings.aspectRatio || '1:1' }
+                                : att
+                        );
+                    })
+                    .catch(err => {
+                        console.error("APP: Failed to upload generated image:", err);
+                        streamAttachmentsRef.current = streamAttachmentsRef.current.filter(att => att !== placeholder);
+                    });
             } else {
                 console.log("APP: Missing user or sessionId!", user?.uid, sessionId);
             }
+            return imageIndex;
         },
         // onGraph - graphs from codeExecution (rendered inline with marker)
         // Returns index immediately, upload runs in background (non-blocking)

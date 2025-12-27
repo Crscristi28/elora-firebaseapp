@@ -26,7 +26,9 @@ interface ChatAttachment {
 interface HistoryMessage {
     role: 'user' | 'model';
     text: string;
-    imageUrls?: string[];
+    imageUrls?: string[];         // storageUrl (Firebase Storage - always valid)
+    imageFileUris?: string[];     // fileUri (File API - may be gai-image:// for generated)
+    imageMimeTypes?: string[];    // MIME types for each image
 }
 
 interface ChatSettings {
@@ -77,6 +79,70 @@ const getFileApiMimeType = (mimeType: string): string => {
                     mimeType === 'application/pdf';
     return isMedia ? mimeType : 'text/plain';
 };
+
+// Helper: Get image dimensions from base64 (PNG, JPEG, WebP)
+function getImageDimensionsFromBase64(base64: string): { width: number; height: number } | null {
+  try {
+    const buffer = Buffer.from(base64, 'base64');
+    // PNG: magic bytes 0x89 0x50 0x4E 0x47
+    if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47) {
+      const width = buffer.readUInt32BE(16);
+      const height = buffer.readUInt32BE(20);
+      return { width, height };
+    }
+    // JPEG: look for SOF0/SOF2 marker (0xFF 0xC0 or 0xFF 0xC2)
+    if (buffer[0] === 0xFF && buffer[1] === 0xD8) {
+      let offset = 2;
+      while (offset < buffer.length - 9) {
+        if (buffer[offset] === 0xFF) {
+          const marker = buffer[offset + 1];
+          if (marker === 0xC0 || marker === 0xC2) {
+            const height = buffer.readUInt16BE(offset + 5);
+            const width = buffer.readUInt16BE(offset + 7);
+            return { width, height };
+          }
+          const segmentLength = buffer.readUInt16BE(offset + 2);
+          offset += 2 + segmentLength;
+        } else {
+          offset++;
+        }
+      }
+    }
+    // WebP: RIFF....WEBPVP8
+    if (buffer.toString('ascii', 0, 4) === 'RIFF' && buffer.toString('ascii', 8, 12) === 'WEBP') {
+      // VP8 lossy
+      if (buffer.toString('ascii', 12, 16) === 'VP8 ') {
+        const width = buffer.readUInt16LE(26) & 0x3FFF;
+        const height = buffer.readUInt16LE(28) & 0x3FFF;
+        return { width, height };
+      }
+      // VP8L lossless
+      if (buffer.toString('ascii', 12, 16) === 'VP8L') {
+        const bits = buffer.readUInt32LE(21);
+        const width = (bits & 0x3FFF) + 1;
+        const height = ((bits >> 14) & 0x3FFF) + 1;
+        return { width, height };
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+// Helper: Calculate aspect ratio string from dimensions
+function calculateAspectRatio(width: number, height: number): string {
+  const ratio = width / height;
+  if (ratio >= 2.2) return '21:9';
+  if (ratio >= 1.7) return '16:9';
+  if (ratio >= 1.4) return '3:2';
+  if (ratio >= 1.2) return '4:3';
+  if (ratio >= 0.95) return '1:1';
+  if (ratio >= 0.8) return '4:5';
+  if (ratio >= 0.7) return '3:4';
+  if (ratio >= 0.6) return '2:3';
+  return '9:16';
+}
 
 // Helper: Router Logic
 async function determineModelFromIntent(ai: GoogleGenAI, lastMessage: string, history: HistoryMessage[]): Promise<RouterDecision> {
@@ -649,18 +715,55 @@ export const streamChat = onRequest(
         res.end();
         return;
       } else if (isProImage) {
-        // PRO IMAGE MODEL: Separate block - native text + image output
+        // PRO IMAGE MODEL: Native image generation with multi-turn editing
         const proImageAI = getAI();
+
+        // Build special contents for Pro Image with images as fileData (for multi-turn editing)
+        // Uses HYBRID SELECTOR: fileUri (if valid) → storageUrl (fallback for gai-image://)
+        const proImageContents: Content[] = (history || []).map((msg: HistoryMessage) => {
+          const parts: Part[] = [];
+
+          // Add images from history as fileData (model needs to SEE them for editing)
+          if (msg.imageUrls && msg.imageUrls.length > 0) {
+            msg.imageUrls.forEach((storageUrl, idx) => {
+              // Hybrid selector: prefer fileUri if valid (not gai-image://), else use storageUrl
+              const rawFileUri = msg.imageFileUris?.[idx];
+              const isInternalGenerativeUri = rawFileUri?.startsWith('gai-image://');
+
+              // Priority: valid fileUri (File API) → storageUrl (Firebase Storage)
+              const finalUri = (rawFileUri && !isInternalGenerativeUri) ? rawFileUri : storageUrl;
+
+              console.log(`[ProImage] msg ${msg.role} img ${idx}: fileUri=${rawFileUri?.substring(0, 50)}, final=${finalUri?.substring(0, 80)}`);
+
+              // Use dynamic mimeType from history, fallback to webp
+              const mimeType = msg.imageMimeTypes?.[idx] || 'image/webp';
+
+              if (finalUri) {
+                parts.push({ fileData: { fileUri: finalUri, mimeType } } as Part);
+              }
+            });
+          }
+
+          // Text at the end
+          parts.push({ text: msg.text });
+          return { role: msg.role, parts };
+        });
+
+        // Add current user message
+        const currentUserMsg = contents[contents.length - 1];
+        console.log(`[ProImage] Current msg parts:`, JSON.stringify(currentUserMsg.parts?.map((p: any) => p.fileData ? { fileUri: p.fileData.fileUri, mimeType: p.fileData.mimeType } : p.text ? 'text' : 'other')));
+        proImageContents.push(currentUserMsg);
 
         const proImageResult = await proImageAI.models.generateContentStream({
           model: "gemini-3-pro-image-preview",
-          contents,
+          contents: proImageContents,  // Use special contents with image history
           config: {
             tools: [{ googleSearch: {} }],
             responseModalities: ['TEXT', 'IMAGE'],
             topP: 0.95,
             maxOutputTokens: 32768,
             systemInstruction: PRO_IMAGE_SYSTEM_PROMPT,
+            thinkingConfig: { includeThoughts: true },
           },
         });
 
@@ -670,19 +773,34 @@ export const streamChat = onRequest(
           if (chunk.candidates && chunk.candidates[0]?.content?.parts) {
             const parts = chunk.candidates[0].content.parts;
             for (const part of parts) {
-              // Handle text
-              if (part.text) {
+              // Handle thinking (native, not thinkingConfig - model outputs thought: true)
+              const isThought = (part as any).thought === true;
+
+              if (isThought && part.text) {
+                // Send as thinking event (appears in thinking panel, not response)
+                res.write(`data: ${JSON.stringify({ thinking: part.text })}\n\n`);
+                if ((res as any).flush) (res as any).flush();
+              } else if (part.text) {
+                // Regular text
                 res.write(`data: ${JSON.stringify({ text: part.text })}\n\n`);
                 if ((res as any).flush) (res as any).flush();
               }
 
-              // Handle native image output from Pro Image model
-              if ((part as any).inlineData) {
+              // Handle native image output from Pro Image model - skip thinking images
+              if ((part as any).inlineData && !isThought) {
                 const inlineData = (part as any).inlineData;
                 const mimeType = inlineData.mimeType || 'image/png';
                 const base64Data = inlineData.data;
-                console.log(`[DEBUG] PRO IMAGE - native image output:`, mimeType);
-                res.write(`data: ${JSON.stringify({ image: { mimeType, data: base64Data } })}\n\n`);
+
+                // Detect aspect ratio from generated image (model decides, we detect)
+                let aspectRatio = '1:1';
+                const dims = getImageDimensionsFromBase64(base64Data);
+                if (dims) {
+                  aspectRatio = calculateAspectRatio(dims.width, dims.height);
+                }
+
+                console.log(`[DEBUG] PRO IMAGE - native image: ${mimeType}, aspect: ${aspectRatio}`);
+                res.write(`data: ${JSON.stringify({ image: { mimeType, data: base64Data, aspectRatio } })}\n\n`);
                 if ((res as any).flush) (res as any).flush();
               }
             }

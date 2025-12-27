@@ -20,7 +20,7 @@ export const streamChatResponse = async (
   onSources?: (sources: Source[]) => void,
   onThinking?: (text: string) => void,
   onSuggestions?: (suggestions: string[]) => void,
-  onImage?: (image: { mimeType: string; data: string; aspectRatio?: string }) => Promise<void>,
+  onImage?: (image: { mimeType: string; data: string; aspectRatio?: string }) => Promise<number>,
   onGraph?: (graph: { mimeType: string; data: string }) => Promise<number>,
   onRoutedModel?: (model: string) => void,
   onGeneratingImage?: () => void
@@ -45,9 +45,18 @@ export const streamChatResponse = async (
         history: history.map(msg => ({
           role: msg.role,
           text: msg.text,
+          // storageUrl (Firebase Storage - always valid, fallback for generated images)
           imageUrls: msg.attachments
             ?.filter(att => att.mimeType?.startsWith('image/') && att.storageUrl)
             .map(att => att.storageUrl),
+          // fileUri (File API - preferred if valid, not gai-image://)
+          imageFileUris: msg.attachments
+            ?.filter(att => att.mimeType?.startsWith('image/'))
+            .map(att => att.fileUri),
+          // mimeType for each image
+          imageMimeTypes: msg.attachments
+            ?.filter(att => att.mimeType?.startsWith('image/'))
+            .map(att => att.mimeType),
         })),
         newMessage,
         attachments,
@@ -107,13 +116,17 @@ export const streamChatResponse = async (
               onChunk(data.text);
             }
 
-            // Handle image event (from image-agent) - AWAIT the Storage upload!
+            // Handle image event - add marker for inline rendering (same pattern as graphs)
             if (data.image) {
               console.log("GeminiService: RECEIVED IMAGE EVENT!", data.image.mimeType);
               if (onImage) {
                 console.log("GeminiService: Calling onImage callback...");
-                await onImage(data.image);
-                console.log("GeminiService: onImage callback DONE");
+                const imageIndex = await onImage(data.image);
+                console.log("GeminiService: onImage callback DONE, index:", imageIndex);
+                // Add marker so frontend renders image inline (like graphs)
+                const marker = `\n[IMAGE:${imageIndex}]\n`;
+                fullText += marker;
+                onChunk(marker);
               } else {
                 console.log("GeminiService: NO onImage callback!");
               }

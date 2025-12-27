@@ -278,15 +278,15 @@ const MessageItem: React.FC<MessageItemProps> = ({
             ) : (
                 <>
                     <div className="text-[15px] md:text-[16px] leading-7 text-gray-800 dark:text-gray-200 markdown-body font-sans antialiased">
-                         {/* Render text with inline graphs */}
+                         {/* Render text with inline graphs and images */}
                          {(() => {
-                             // Split text by [GRAPH:X] markers
-                             const parts = msg.text.split(/(\[GRAPH:\d+\])/);
+                             // Split text by [GRAPH:X] or [IMAGE:X] markers
+                             const parts = msg.text.split(/(\[(?:GRAPH|IMAGE):\d+\])/);
                              return parts.map((part, idx) => {
-                                 const match = part.match(/\[GRAPH:(\d+)\]/);
-                                 if (match) {
-                                     // Render graph inline
-                                     const graphIndex = parseInt(match[1], 10);
+                                 // Check for GRAPH marker
+                                 const graphMatch = part.match(/\[GRAPH:(\d+)\]/);
+                                 if (graphMatch) {
+                                     const graphIndex = parseInt(graphMatch[1], 10);
                                      const att = msg.attachments?.[graphIndex];
                                      if (att && att.isGraph) {
                                          const cssRatio = (att.aspectRatio || '1:1').replace(':', '/');
@@ -314,6 +314,45 @@ const MessageItem: React.FC<MessageItemProps> = ({
                                                      <img
                                                          src={att.storageUrl || `data:${att.mimeType};base64,${att.data}`}
                                                          alt="Graph"
+                                                         className="w-full h-full object-contain"
+                                                     />
+                                                 </div>
+                                             );
+                                         }
+                                     }
+                                     return null;
+                                 }
+                                 // Check for IMAGE marker (inline images from Pro Image/Flash Image)
+                                 const imageMatch = part.match(/\[IMAGE:(\d+)\]/);
+                                 if (imageMatch) {
+                                     const imageIndex = parseInt(imageMatch[1], 10);
+                                     const att = msg.attachments?.[imageIndex];
+                                     if (att && att.mimeType?.startsWith('image/')) {
+                                         const cssRatio = (att.aspectRatio || '1:1').replace(':', '/');
+                                         if (att.isPlaceholder) {
+                                             return (
+                                                 <div
+                                                     key={idx}
+                                                     className="my-4 relative rounded-2xl overflow-hidden border border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-[#1a1b1e] animate-pulse"
+                                                     style={{ width: '400px', maxWidth: '100%', aspectRatio: cssRatio }}
+                                                 >
+                                                     <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+                                                         <Sparkles className="text-blue-500 animate-pulse" size={24} />
+                                                         <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Generating image...</span>
+                                                     </div>
+                                                 </div>
+                                             );
+                                         }
+                                         if (att.storageUrl || att.data) {
+                                             return (
+                                                 <div
+                                                     key={idx}
+                                                     className="my-4 relative rounded-2xl overflow-hidden border border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-[#1a1b1e]"
+                                                     style={{ width: '400px', maxWidth: '100%', aspectRatio: cssRatio }}
+                                                 >
+                                                     <img
+                                                         src={att.storageUrl || `data:${att.mimeType};base64,${att.data}`}
+                                                         alt="Generated image"
                                                          className="w-full h-full object-contain"
                                                      />
                                                  </div>
