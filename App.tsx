@@ -58,6 +58,7 @@ const App: React.FC = () => {
   const [routedModel, setRoutedModel] = useState<string | null>(null);
   const [isGeneratingImage, setIsGeneratingImage] = useState<boolean>(false);
   const [currentMode, setCurrentMode] = useState<'image' | 'research' | null>(null);
+  const [isLoadingExistingChat, setIsLoadingExistingChat] = useState(false);
 
   const inputAreaRef = useRef<HTMLDivElement>(null);
 
@@ -243,6 +244,7 @@ const App: React.FC = () => {
       // Just reset current ID to null.
       // The actual DB creation happens in handleSendMessage
       setCurrentSessionId(null);
+      setIsLoadingExistingChat(false); // New chat = no loading overlay
       setIsLoading(false);
       setReplyingTo(null);
       if (window.innerWidth < 768) setIsSidebarOpen(false);
@@ -286,6 +288,7 @@ const App: React.FC = () => {
       };
       const newId = await createNewChatInDb(newSession);
       if (!newId) return;
+      setIsLoadingExistingChat(false); // New session = no loading overlay
       setCurrentSessionId(newId);
       sessionId = newId;
       isNewSession = true; // Mark as new
@@ -677,7 +680,7 @@ const App: React.FC = () => {
         onClose={() => setIsSidebarOpen(false)}
         sessions={sessions}
         currentSessionId={currentSessionId}
-        onSelectSession={setCurrentSessionId}
+        onSelectSession={(id) => { setIsLoadingExistingChat(true); setCurrentSessionId(id); }}
         onNewChat={createNewChat}
         onDeleteSession={(id, e) => { e.stopPropagation(); deleteChatInDb(id); }}
         onRenameSession={renameChatInDb}
@@ -728,7 +731,7 @@ const App: React.FC = () => {
           </div>
           {/* Chat Area */}
           <div className="flex-1 overflow-hidden relative flex flex-col bg-white dark:bg-[#0e0e10]">
-            <ChatLoadingOverlay sessionId={currentSessionId} />
+            <ChatLoadingOverlay sessionId={currentSessionId} isExistingChat={isLoadingExistingChat} />
             <MessageList
               messages={displayMessages}
               isThinking={isLoading}

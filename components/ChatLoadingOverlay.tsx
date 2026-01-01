@@ -8,38 +8,43 @@ import React, { useState, useEffect, useRef } from 'react';
 
 interface ChatLoadingOverlayProps {
     sessionId: string | null;
+    isExistingChat: boolean; // Only show overlay when loading existing chat with messages
 }
 
-const ChatLoadingOverlay: React.FC<ChatLoadingOverlayProps> = ({ sessionId }) => {
+const ChatLoadingOverlay: React.FC<ChatLoadingOverlayProps> = ({ sessionId, isExistingChat }) => {
     const [isVisible, setIsVisible] = useState(false);
     const [isFadingOut, setIsFadingOut] = useState(false);
     const prevSessionIdRef = useRef<string | null>(null);
     const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-    // Simple: Session change → show overlay → hide after fixed time
+    // Only show overlay when switching to an EXISTING chat (not new empty chat)
     useEffect(() => {
         if (sessionId && prevSessionIdRef.current !== sessionId) {
             prevSessionIdRef.current = sessionId;
-            setIsVisible(true);
-            setIsFadingOut(false);
 
-            // Clear any existing timeout
-            if (timeoutRef.current) clearTimeout(timeoutRef.current);
+            // Only show loading for existing chats with messages
+            if (isExistingChat) {
+                setIsVisible(true);
+                setIsFadingOut(false);
 
-            // Fixed 500ms display, then fade out
-            timeoutRef.current = setTimeout(() => {
-                setIsFadingOut(true);
-                setTimeout(() => {
-                    setIsVisible(false);
-                    setIsFadingOut(false);
-                }, 200); // fade animation duration
-            }, 500);
+                // Clear any existing timeout
+                if (timeoutRef.current) clearTimeout(timeoutRef.current);
+
+                // Fixed 500ms display, then fade out
+                timeoutRef.current = setTimeout(() => {
+                    setIsFadingOut(true);
+                    setTimeout(() => {
+                        setIsVisible(false);
+                        setIsFadingOut(false);
+                    }, 200); // fade animation duration
+                }, 500);
+            }
         }
 
         return () => {
             if (timeoutRef.current) clearTimeout(timeoutRef.current);
         };
-    }, [sessionId]);
+    }, [sessionId, isExistingChat]);
 
     if (!isVisible) return null;
 
